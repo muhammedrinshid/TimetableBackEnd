@@ -250,7 +250,19 @@ class Teacher(models.Model):
         
         
         
-        
+class Room(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100,null=True,blank=True)
+    room_number = models.CharField(max_length=20)
+    capacity = models.PositiveIntegerField(null=True,blank=True)
+    # floor = models.CharField(max_length=50)
+    # building = models.CharField(max_length=100)
+    # facilities = models.TextField()
+    # occupied = models.BooleanField(default=False)
+    # notes = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.room_number})"      
 
 
 class Standard(models.Model):
@@ -302,11 +314,11 @@ class Classroom(models.Model):
     standard = models.ForeignKey(Standard, related_name='classrooms', on_delete=models.CASCADE)
     school = models.ForeignKey(User, related_name='classrooms', on_delete=models.CASCADE)
     number_of_students = models.PositiveIntegerField(null=True, blank=True,default=0)
-    room_number = models.CharField(max_length=10,null=True,blank=True)
     class_id = models.CharField(max_length=20, unique=True, editable=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     division = models.CharField(max_length=10)
+    room = models.OneToOneField(Room, null=True, blank=True, related_name="classroom", on_delete=models.SET_NULL)
     
 
     @property
@@ -316,6 +328,17 @@ class Classroom(models.Model):
     @property
     def is_fully_allocated_subjects_to_class_rooms(self):
         return self.subject_count == self.school.teaching_slots
+    @property
+    def lessons_assigned_subjects(self):
+        return sum(cs.lessons_per_week for cs in self.class_subjects.all())
+
+    @property
+    def subjects_assigned_teacher(self):
+        return sum(cs.subjects_with_assigned_teacher for cs in self.class_subjects.all())
+
+    @property
+    def total_subjects(self):
+        return self.class_subjects.count()
 
     def __str__(self):
         return f'{self.standard} {self.name}'
@@ -362,6 +385,11 @@ class ClassSubject(models.Model):
     elective_or_core = models.BooleanField(default=False)
     elective_group = models.ForeignKey(ElectiveGroup, related_name="class_subjects", null=True, blank=True, on_delete=models.SET_NULL)
     class_room=models.ForeignKey(Classroom,on_delete=models.CASCADE,related_name="class_subjects",blank=False)
+    
+    
+    @property
+    def subjects_with_assigned_teacher(self):
+        return sum(1 for css in self.subjects.all() if css.has_assigned_teacher)
 
     def save(self, *args, **kwargs):
         # Call clean method to perform validation

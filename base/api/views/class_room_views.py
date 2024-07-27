@@ -5,13 +5,13 @@
 
 
 
-from rest_framework import status
+from rest_framework import status,serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from ...models import Standard, Classroom, Grade,Subject,Teacher
+from ...models import Standard, Classroom, Grade,Subject,Teacher,ClassSubject,ClassSubjectSubject
 from rest_framework.decorators import api_view,permission_classes
-from ..serializer.class_room_serializer import StandardSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer
+from ..serializer.class_room_serializer import StandardSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
 from django.db import transaction
 from django.db.models import Prefetch
 
@@ -134,9 +134,23 @@ def create_standard_and_classrooms(request):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def classroom_instance_manager(request,pk=None):
-    if request.method=='GET':
+    if request.method=='GET' and pk is not None:
         
-            pass
+        classroom = Classroom.objects.filter(pk=pk).select_related(
+            'standard', 'room'
+        ).prefetch_related(
+            Prefetch('class_subjects', queryset=ClassSubject.objects.all().prefetch_related(
+                Prefetch('class_subjects', queryset=ClassSubjectSubject.objects.all().select_related('subject').prefetch_related('assigned_teachers'))
+            ))
+        ).first()
+        serializer = ClassroomDetailSerializer(classroom)
+        return Response(serializer.data)
+
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     elif request.method=="DELETE" and pk is not None:
         try:
             with transaction.atomic():
@@ -222,4 +236,37 @@ def list_subjects_with_available_teachers(request,pk):
     
 
 
+@api_view([ 'POST'])
+def assign_subjects_to_all_classrooms(request, pk):
+    
+    if pk is not None:
+        try:
+            standard = Standard.objects.get(id=pk)
+        except Standard.DoesNotExist:
+            return Response({"error": "Standard not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        # Step 1: Collect all classrooms from this standard using reverse relation
+        classrooms = standard.classrooms.all()
+
+    
+        if request.method == 'POST':
+            created_subjects = []
+            
+            # Wrap the entire creation process in a transaction
+            with transaction.atomic():
+                for classroom in classrooms:
+
+                    for subject_data in request.data.get('selectedSubjects', []):
+                        subject_data['class_room'] = classroom.id
+                        subject_data['school'] = request.user.id
+
+                        serializer = ClassSubjectSerializer(data=subject_data)
+                        if serializer.is_valid():
+                            serializer.save()
+                            created_subjects.append(serializer.data)
+                        else:
+                            # If any serializer is invalid, raise an exception to rollback the transaction
+                            raise serializers.ValidationError(serializer.errors)
+
+            return Response(created_subjects, status=status.HTTP_201_CREATED)
+    return Response({"error:primary key not be null"})
