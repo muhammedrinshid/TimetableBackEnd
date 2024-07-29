@@ -9,9 +9,9 @@ from rest_framework import status,serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from ...models import Standard, Classroom, Grade,Subject,Teacher,ClassSubject,ClassSubjectSubject
+from ...models import Standard, Classroom, Grade,Subject,Teacher,ClassSubject,ClassSubjectSubject,ElectiveGroup
 from rest_framework.decorators import api_view,permission_classes
-from ..serializer.class_room_serializer import StandardSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
+from ..serializer.class_room_serializer import StandardSerializer,ElectiveSubjectAddSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
 from django.db import transaction
 from django.db.models import Prefetch
 
@@ -131,7 +131,7 @@ def create_standard_and_classrooms(request):
     
     
     
-@api_view(['DELETE'])
+@api_view(['DELETE','GET'])
 @permission_classes([IsAuthenticated])
 def classroom_instance_manager(request,pk=None):
     if request.method=='GET' and pk is not None:
@@ -147,10 +147,7 @@ def classroom_instance_manager(request,pk=None):
         return Response(serializer.data)
 
 
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+       
     elif request.method=="DELETE" and pk is not None:
         try:
             with transaction.atomic():
@@ -255,6 +252,7 @@ def assign_subjects_to_all_classrooms(request, pk):
             # Wrap the entire creation process in a transaction
             with transaction.atomic():
                 for classroom in classrooms:
+                    classroom.class_subjects.all().delete()
 
                     for subject_data in request.data.get('selectedSubjects', []):
                         subject_data['class_room'] = classroom.id
@@ -270,3 +268,31 @@ def assign_subjects_to_all_classrooms(request, pk):
 
             return Response(created_subjects, status=status.HTTP_201_CREATED)
     return Response({"error:primary key not be null"})
+
+
+
+
+
+
+
+
+
+
+@api_view(['GET'])
+def elective_subject_add_view(request, pk):
+    try:
+        print(pk)
+        standard = Standard.objects.get(id=pk)
+    except Standard.DoesNotExist:
+        return Response({"error": "Standard not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    existing_elective_groups = standard.electives_groups.all()
+    classrooms = standard.classrooms.all()
+
+    data = {
+        'existing_elective_groups': existing_elective_groups,
+        'classrooms': classrooms
+    }
+
+    serializer = ElectiveSubjectAddSerializer(data)
+    return Response(serializer.data)

@@ -22,7 +22,7 @@ class ElectiveGroupAdmin(admin.ModelAdmin):
 
 @admin.register(Classroom)
 class ClassroomAdmin(admin.ModelAdmin):
-    list_display = ('name', 'standard', 'school', 'number_of_students', 'room_number', 'class_id', 'division', 'created_at', 'updated_at')
+    list_display = ('name', 'standard', 'school', 'number_of_students', 'class_id', 'division', 'created_at', 'updated_at')
     search_fields = ('name', 'standard__name', 'division')
     list_filter = ('standard', 'school', 'division')
     ordering = ('name',)

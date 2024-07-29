@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from ...models import Standard, Classroom, Grade, User, Teacher, Subject, ClassSubject, ClassSubjectSubject
+from ...models import Standard, Classroom, Grade, User, Teacher, Subject, ClassSubject, ClassSubjectSubject,ElectiveGroup
 from django.db import transaction
 
 # Existing serializers
@@ -15,7 +15,7 @@ class StandardSerializer(serializers.ModelSerializer):
 class ClassroomLightSerializer(serializers.ModelSerializer):
     class Meta:
         model = Classroom
-        fields = ['id', 'name', 'division', 'subject_count']
+        fields = ['id', 'name', 'division', 'lessons_assigned_subjects']
 
 class StandardLightSerializer(serializers.ModelSerializer):
     classrooms = ClassroomLightSerializer(many=True, read_only=True)
@@ -53,7 +53,7 @@ class ClassroomSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Classroom
-        fields = ['id', 'name', 'standard', 'number_of_students', 'room_number', 
+        fields = ['id', 'name', 'standard', 'number_of_students', 
                   'class_id', 'created_at', 'updated_at', 'division']
         read_only_fields = ['id', 'created_at', 'updated_at', 'class_id']
 
@@ -152,6 +152,7 @@ class ClassSubjectDetailSerializer(serializers.ModelSerializer):
 
 class ClassroomDetailSerializer(serializers.ModelSerializer):
     standard_name = serializers.CharField(source='standard.name')
+    standard_short_name = serializers.CharField(source='standard.short_name')
     room_no = serializers.CharField(source='room_number', allow_null=True)
     lessons_assigned_subjects = serializers.SerializerMethodField()
     subjects_assigned_teacher = serializers.SerializerMethodField()
@@ -160,8 +161,8 @@ class ClassroomDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Classroom
-        fields = ['id', 'name', 'standard_name', 'division', 'room_no', 'lessons_assigned_subjects',
-                  'subjects_assigned_teacher', 'total_subjects', 'subject_data']
+        fields = ['id', 'name', 'standard_name','standard_short_name', 'division', 'room_no', 'lessons_assigned_subjects',
+                  'subjects_assigned_teacher', 'total_subjects', 'subject_data','number_of_students']
 
     def get_lessons_assigned_subjects(self, obj):
         return sum(cs.lessons_per_week for cs in obj.class_subjects.all())
@@ -171,3 +172,45 @@ class ClassroomDetailSerializer(serializers.ModelSerializer):
 
     def get_total_subjects(self, obj):
         return obj.class_subjects.count()
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+class ClassSubjectLightSerializer(serializers.ModelSerializer):
+    classroom_id = serializers.UUIDField(source="class_room.id",read_only=True)
+
+    class Meta:
+        model = ClassSubject
+        fields = ['id', 'name','classroom_id']
+
+class ElectiveGroupSerializer(serializers.ModelSerializer):
+    class_subjects = ClassSubjectLightSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ElectiveGroup
+        fields = ['id', 'name', 'class_subjects']
+
+class ClassroomElectiveSerializer(serializers.ModelSerializer):
+    elective_class_subjects = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Classroom
+        fields = ['id', 'division', 'elective_class_subjects']
+
+    def get_elective_class_subjects(self, obj):
+        elective_subjects = obj.class_subjects.filter(elective_or_core=True)
+        return ClassSubjectLightSerializer(elective_subjects, many=True).data
+
+class ElectiveSubjectAddSerializer(serializers.Serializer):
+    existing_elective_groups = ElectiveGroupSerializer(many=True, read_only=True)
+    classrooms = ClassroomElectiveSerializer(many=True, read_only=True)

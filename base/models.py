@@ -293,6 +293,7 @@ class ElectiveGroup(models.Model):
 
     id = models.UUIDField(default=uuid.uuid4, primary_key=True, unique=True)
     name = models.CharField(max_length=255)
+    standard=models.ForeignKey(Standard,on_delete=models.CASCADE,related_name="electives_groups",null=True)
     school = models.ForeignKey(User, related_name='electivegroups',on_delete=models.CASCADE)
 
     class Meta:
@@ -458,5 +459,15 @@ class ClassSubjectSubject(models.Model):
         verbose_name_plural = "Class Subject Subjects"
         ordering = ['class_subject', 'subject']
         
+        
+        
+        
+        
+        
+        
+        
+        
+        
+    
         
   

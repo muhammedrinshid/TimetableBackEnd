@@ -3,7 +3,10 @@ from ..views import class_room_views
 urlpatterns = [
     
             path('create-standard/',class_room_views.create_standard_and_classrooms , name='create-standard-with-classrooms'),
+            path('elective-subject-add/<str:pk>/', class_room_views.elective_subject_add_view, name='elective-subject-add'),
+
             path('classroom/<str:pk>/',class_room_views.classroom_instance_manager , name='classrooms-updation-deletion'),
+            
             path('classroom/',class_room_views.classroom_instance_manager , name='classrooms-detail-view'),
             path('standard/<str:pk>/',class_room_views.standard_instance_manager , name='classrooms-updation-deletion'),
             path('grades-standards-classrooms/', class_room_views.get_user_grades_standards_classrooms, name='grades-standards-classrooms'),
