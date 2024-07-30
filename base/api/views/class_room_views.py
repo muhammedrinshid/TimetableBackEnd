@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from ...models import Standard, Classroom, Grade,Subject,Teacher,ClassSubject,ClassSubjectSubject,ElectiveGroup
 from rest_framework.decorators import api_view,permission_classes
-from ..serializer.class_room_serializer import StandardSerializer,ElectiveSubjectAddSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
+from ..serializer.class_room_serializer import StandardSerializer,ElectiveSubjectAddSerializer,ElectiveGroupSerializer,ElectiveGroupCreateSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
 from django.db import transaction
 from django.db.models import Prefetch
 
@@ -234,6 +234,7 @@ def list_subjects_with_available_teachers(request,pk):
 
 
 @api_view([ 'POST'])
+@permission_classes([IsAuthenticated])
 def assign_subjects_to_all_classrooms(request, pk):
     
     if pk is not None:
@@ -273,12 +274,79 @@ def assign_subjects_to_all_classrooms(request, pk):
 
 
 
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_elective_group(request):
+    print("hi")
+    serializer = ElectiveGroupCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        data = serializer.validated_data
+        
+        try:
+            standard = Standard.objects.get(id=data['standardId'])
+        except Standard.DoesNotExist:
+            return Response(
+                {"error": f"Standard with id {data['standardId']} not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get or create the ElectiveGroup
+        elective_group, created = ElectiveGroup.objects.get_or_create(
+            name=data['groupName'],
+            standard=standard,
+            school=request.user
+        )
+
+        updated_subjects = []
+        not_found_subjects = []
+
+        # Update ClassSubjects
+        with transaction.atomic():
+
+            for division_data in data['divisions']:
+                try:
+                    class_subject = ClassSubject.objects.get(
+                        id=division_data['id'],
+                        class_room_id=division_data['classroom_id'],
+                        school=request.user
+                    )
+                    # Check if the elective_group is different before updating
+                    if class_subject.elective_group != elective_group:
+                        class_subject.elective_group = elective_group
+                        class_subject.save()
+                        updated_subjects.append(class_subject.id)
+                except ClassSubject.DoesNotExist:
+                    not_found_subjects.append(division_data['id'])
+
+        # Prepare response data
+            response_data = ElectiveGroupSerializer(elective_group).data
+            response_data['updated_subjects'] = updated_subjects
+            if not_found_subjects:
+                response_data['not_found_subjects'] = not_found_subjects
+
+            # Determine the appropriate status code
+            if created:
+                status_code = status.HTTP_201_CREATED
+            elif updated_subjects:
+                status_code = status.HTTP_200_OK
+            else:
+                status_code = status.HTTP_304_NOT_MODIFIED
+
+        return Response(response_data, status=status_code)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
 
 
 
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def elective_subject_add_view(request, pk):
     try:
         print(pk)

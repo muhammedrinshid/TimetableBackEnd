@@ -175,7 +175,23 @@ class ClassroomDetailSerializer(serializers.ModelSerializer):
     
     
     
-    
+
+class ElectiveGroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ElectiveGroup
+        fields = ['id', 'name', 'standard']
+
+class ClassSubjectUpdateSerializer(serializers.Serializer):
+    classroom_id = serializers.UUIDField()
+    division = serializers.CharField()
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+
+class ElectiveGroupCreateSerializer(serializers.Serializer):
+    groupName = serializers.CharField()
+    groupId = serializers.CharField(required=False)
+    standardId = serializers.UUIDField()
+    divisions = ClassSubjectUpdateSerializer(many=True)
     
     
     
@@ -193,12 +209,12 @@ class ClassSubjectLightSerializer(serializers.ModelSerializer):
         model = ClassSubject
         fields = ['id', 'name','classroom_id']
 
-class ElectiveGroupSerializer(serializers.ModelSerializer):
-    class_subjects = ClassSubjectLightSerializer(many=True, read_only=True)
+# class ElectiveGroupSerializer(serializers.ModelSerializer):
+#     class_subjects = ClassSubjectLightSerializer(many=True, read_only=True)
 
-    class Meta:
-        model = ElectiveGroup
-        fields = ['id', 'name', 'class_subjects']
+#     class Meta:
+#         model = ElectiveGroup
+#         fields = ['id', 'name', 'class_subjects']
 
 class ClassroomElectiveSerializer(serializers.ModelSerializer):
     elective_class_subjects = serializers.SerializerMethodField()
