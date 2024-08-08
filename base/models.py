@@ -106,7 +106,17 @@ class User(AbstractUser):
     def all_classes_assigned_subjects(self):
         class_rooms=self.classrooms.all()
         return class_rooms.exists() and all(room.is_fully_allocated_subjects_to_class_rooms  for room in class_rooms)
-    
+    @property
+    def all_class_subjects_have_correct_elective_groups(self):
+        class_subjects = self.class_subjects.all()
+        
+        if not class_subjects.exists():
+            return False  # Or True, depending on how you want to handle schools with no class subjects
+        
+        return all(
+            class_subject.elective_group_added_correctly 
+            for class_subject in class_subjects
+        )
 
     # Role field (for future use)
     ROLE_CHOICES = [
@@ -251,19 +261,28 @@ class Teacher(models.Model):
         
         
 class Room(models.Model):
+    ROOM_TYPES = [
+        ('CLASSROOM', 'Classroom'),
+        ('OFFICE', 'Office'),
+        ('COMPUTER_LAB', 'Computer Lab'),
+        ('LECTURE_HALL', 'Lecture Hall'),
+        ('CONFERENCE_ROOM', 'Conference Room'),
+        ('LABORATORY', 'Laboratory'),
+        ('STUDY_AREA', 'Study Area'),
+        ('OTHER', 'Other'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=100,null=True,blank=True)
-    room_number = models.CharField(max_length=20)
-    capacity = models.PositiveIntegerField(null=True,blank=True)
-    # floor = models.CharField(max_length=50)
-    # building = models.CharField(max_length=100)
-    # facilities = models.TextField()
-    # occupied = models.BooleanField(default=False)
-    # notes = models.TextField(blank=True, null=True)
-
-    def __str__(self):
-        return f"{self.name} ({self.room_number})"      
-
+    name = models.CharField(max_length=100, null=True, blank=True)
+    room_number = models.CharField(max_length=20,unique=True)
+    school = models.ForeignKey(User, on_delete=models.CASCADE, null=True)
+    capacity = models.PositiveIntegerField(null=True, blank=True)
+    occupied = models.BooleanField(default=False)
+    room_type = models.CharField(
+        max_length=20,
+        choices=ROOM_TYPES,
+        default='CLASSROOM',
+    )
 
 class Standard(models.Model):
     """
@@ -295,7 +314,7 @@ class ElectiveGroup(models.Model):
     name = models.CharField(max_length=255)
     standard=models.ForeignKey(Standard,on_delete=models.CASCADE,related_name="electives_groups",null=True)
     school = models.ForeignKey(User, related_name='electivegroups',on_delete=models.CASCADE)
-
+    preferred_rooms=models.ManyToManyField(Room,related_name="electvie_grops")
     class Meta:
         verbose_name = "Elective Group"
         verbose_name_plural = "Elective Groups"
@@ -391,6 +410,18 @@ class ClassSubject(models.Model):
     @property
     def subjects_with_assigned_teacher(self):
         return sum(1 for css in self.subjects.all() if css.has_assigned_teacher)
+    @property
+    def needs_elective_group(self):
+        if not self.elective_or_core:
+            return False
+        else:
+            return len(self.subjects.all()) > 1
+    @property
+    def elective_group_added_correctly(self):
+        if not self.needs_elective_group:
+            return True
+        else:
+            return self.elective_group is not None
 
     def save(self, *args, **kwargs):
         # Call clean method to perform validation
@@ -399,9 +430,20 @@ class ClassSubject(models.Model):
 
     def clean(self):
         # Validate total number of students in ClassSubjectSubject does not exceed number_of_students in Classroom
-        total_students = sum((child.number_of_students for child in self.class_subjects.all()), 0)
+        total_students = sum((child.number_of_students for child in self.class_subject_subjects.all()), 0)
         if total_students > self.class_room.number_of_students:
             raise ValidationError('Total number of students in ClassSubjectSubject exceeds the number_of_students in the classroom.')
+        
+        if self.elective_or_core and self.elective_group:
+            # Check if there's already a class subject with the same elective group in this classroom
+            existing = ClassSubject.objects.filter(
+                class_room=self.class_room,
+                elective_group=self.elective_group
+            ).exclude(pk=self.pk)
+            
+            if existing.exists():
+                raise ValidationError("This classroom already has a class subject with this elective group.")
+
 
         # Set elective_group to None if elective_or_core is False
         if not self.elective_or_core:
@@ -411,7 +453,14 @@ class ClassSubject(models.Model):
     class Meta:
         verbose_name = "Class Subject"
         verbose_name_plural = "Class Subjects"
-        ordering = ['name'] 
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['class_room', 'elective_group'],
+                condition=models.Q(elective_or_core=True),
+                name='unique_elective_group_per_classroom'
+            )
+        ] 
         
 class ClassSubjectSubject(models.Model):
     """
@@ -424,7 +473,7 @@ class ClassSubjectSubject(models.Model):
 
     id = models.UUIDField(default=uuid.uuid4, primary_key=True, editable=False, unique=True)
     school = models.ForeignKey(User, related_name='class_subject_subjects',on_delete=models.CASCADE)
-    class_subject = models.ForeignKey(ClassSubject, on_delete=models.CASCADE,related_name="class_subjects")
+    class_subject = models.ForeignKey(ClassSubject, on_delete=models.CASCADE,related_name="class_subject_subjects")
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     assigned_teachers = models.ManyToManyField(Teacher, related_name='class_subject_subjects')
     number_of_students=models.PositiveBigIntegerField(null=True,blank=True,default=0)

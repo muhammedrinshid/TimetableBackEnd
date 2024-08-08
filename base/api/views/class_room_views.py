@@ -3,17 +3,22 @@
 
 
 
+import logging
 
 
 from rest_framework import status,serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from ...models import Standard, Classroom, Grade,Subject,Teacher,ClassSubject,ClassSubjectSubject,ElectiveGroup
+from ...models import Standard, Classroom, Grade,Subject,Teacher,ClassSubject,ClassSubjectSubject,ElectiveGroup,Room
 from rest_framework.decorators import api_view,permission_classes
-from ..serializer.class_room_serializer import StandardSerializer,ElectiveSubjectAddSerializer,ElectiveGroupSerializer,ElectiveGroupCreateSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
+from ..serializer.class_room_serializer import StandardSerializer,ElectiveSubjectAddSerializer,ClassSubjectUpdateSerializer,RoomSerializer,ElectiveGroupGetSerializer,ElectiveGroupCreateSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
 from django.db import transaction
 from django.db.models import Prefetch
+from django.db import DatabaseError
+from django.core.exceptions import ObjectDoesNotExist
+from django.shortcuts import get_object_or_404
+logger = logging.getLogger(__name__)
 
 
 # helper function to get latest divison
@@ -55,7 +60,6 @@ def get_user_grades_standards_classrooms(request):
 def add_new_division(request):
     standard_id=request.data.get('standard_id')
     
-    print(request.data)
     try:
         standard=Standard.objects.get(school=request.user,id=standard_id)
     except Standard.DoesNotExist:
@@ -99,7 +103,6 @@ def create_standard_and_classrooms(request):
             classrooms = []
 
             for i in range(number_of_divisions):
-                print(request.data)
 
                 division = chr(65 + i)  # A, B, C, ...
                 classroom_data = {
@@ -131,7 +134,7 @@ def create_standard_and_classrooms(request):
     
     
     
-@api_view(['DELETE','GET'])
+@api_view(['DELETE','GET','PATCH'])
 @permission_classes([IsAuthenticated])
 def classroom_instance_manager(request,pk=None):
     if request.method=='GET' and pk is not None:
@@ -140,7 +143,7 @@ def classroom_instance_manager(request,pk=None):
             'standard', 'room'
         ).prefetch_related(
             Prefetch('class_subjects', queryset=ClassSubject.objects.all().prefetch_related(
-                Prefetch('class_subjects', queryset=ClassSubjectSubject.objects.all().select_related('subject').prefetch_related('assigned_teachers'))
+                Prefetch('class_subject_subjects', queryset=ClassSubjectSubject.objects.all().select_related('subject').prefetch_related('assigned_teachers'))
             ))
         ).first()
         serializer = ClassroomDetailSerializer(classroom)
@@ -171,7 +174,75 @@ def classroom_instance_manager(request,pk=None):
         
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
+    
+    elif request.method == 'PATCH' and pk is not None:
+
+   
+      
+        try:
+            classroom = Classroom.objects.get(pk=pk)
+        except Classroom.DoesNotExist:
+            return Response({"error": "Classroom not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        room_data = request.data.get('room')
+        number_of_students = request.data.get('number_of_students')
+
+        with transaction.atomic():
+            try:
+                if room_data:
+                    current_room=classroom.room
+                    if current_room:
+                        current_room.occupied=False
+                        current_room.name=f"{current_room.room_number} free room"
+                        current_room.save()
+                    room_name = f"room {classroom.standard.short_name} {classroom.name}"
+                    if 'id' in room_data:  # Existing room
+                        try:
+                            room = Room.objects.get(pk=room_data['id'])
+                            room_serializer = RoomSerializer(room, data={
+                                'name': room_name,
+                                'occupied': True,
+                                'room_type':'CLASSROOM',
+                                **room_data  # Include other fields from room_data
+                            }, partial=True)
+                            if room_serializer.is_valid():
+                                room = room_serializer.save(school=request.user)
+                            else:
+                                return Response(room_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                        except Room.DoesNotExist:
+                            return Response({"error": "Room not found"}, status=status.HTTP_404_NOT_FOUND)
+                    else:  # New room
+                        room_serializer = RoomSerializer(data={
+                            'name': room_name,
+                            'room_number': room_data.get('room_number', ''),
+                            'capacity': room_data.get('capacity', 0),
+                            'occupied': True
+                        })
+                        if room_serializer.is_valid():
+                            room = room_serializer.save(school=request.user)
+                        else:
+                            return Response(room_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+                # Prepare data for classroom update
+                classroom_update_data = {}
+                if room_data:
+                    classroom_update_data['room'] = room.id
+                if number_of_students is not None:
+                    classroom_update_data['number_of_students'] = number_of_students
+
+                # Use ClassroomSerializer for updating the classroom
+                classroom_serializer = ClassroomSerializer(classroom, data=classroom_update_data, partial=True)
+                if classroom_serializer.is_valid():
+                    updated_classroom = classroom_serializer.save()
+                    return Response(ClassroomSerializer(updated_classroom).data)
+                else:
+                    return Response(classroom_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            except Exception as e:
+                # Log the exception here if needed
+                return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+                
 
 
 
@@ -270,17 +341,49 @@ def assign_subjects_to_all_classrooms(request, pk):
             return Response(created_subjects, status=status.HTTP_201_CREATED)
     return Response({"error:primary key not be null"})
 
+@api_view([ 'POST'])
+@permission_classes([IsAuthenticated])
+def assign_subjects_to_single_classroom(request, pk):
+    
+    if pk is not None:
+        try:
+            classroom = Classroom.objects.get(id=pk)
+        except Classroom.DoesNotExist:
+            return Response({"error": "Standard not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
+    
+        if request.method == 'POST':
+            created_subjects = []
+            
+            # Wrap the entire creation process in a transaction
+            with transaction.atomic():
+                
+
+                    for subject_data in request.data.get('selectedSubjects', []):
+                        subject_data['class_room'] = classroom.id
+                        subject_data['school'] = request.user.id
+
+                        serializer = ClassSubjectSerializer(data=subject_data)
+                        if serializer.is_valid():
+                            serializer.save()
+                            created_subjects.append(serializer.data)
+                        else:
+                            # If any serializer is invalid, raise an exception to rollback the transaction
+                            raise serializers.ValidationError(serializer.errors)
+
+            return Response(created_subjects, status=status.HTTP_201_CREATED)
+    return Response({"error:primary key not be null"})
 
 
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
 def update_elective_group(request):
-    print("hi")
+    logger.info(f"Received payload: {request.data}")
     serializer = ElectiveGroupCreateSerializer(data=request.data)
     if serializer.is_valid():
         data = serializer.validated_data
+        logger.info(f"Validated data: {data}")
         
         try:
             standard = Standard.objects.get(id=data['standardId'])
@@ -292,17 +395,23 @@ def update_elective_group(request):
 
         # Get or create the ElectiveGroup
         elective_group, created = ElectiveGroup.objects.get_or_create(
-            name=data['groupName'],
-            standard=standard,
-            school=request.user
+            id=data.get('groupId'),  # Use the provided groupId if it exists
+            defaults={
+                'name': data['groupName'],
+                'standard': standard,
+                'school': request.user
+            }
         )
+        if not created:
+            elective_group.name = data['groupName']
+            elective_group.standard = standard
+            elective_group.save()
 
         updated_subjects = []
         not_found_subjects = []
 
-        # Update ClassSubjects
+        # Update ClassSubjects and preferred rooms
         with transaction.atomic():
-
             for division_data in data['divisions']:
                 try:
                     class_subject = ClassSubject.objects.get(
@@ -318,38 +427,42 @@ def update_elective_group(request):
                 except ClassSubject.DoesNotExist:
                     not_found_subjects.append(division_data['id'])
 
+            # Update preferred rooms
+            if 'preferredRooms' in data:
+                preferred_room_ids = data['preferredRooms']
+                logger.info(f"Preferred room IDs received: {preferred_room_ids}")
+                
+                preferred_rooms = Room.objects.filter(id__in=preferred_room_ids)
+                logger.info(f"Found {preferred_rooms.count()} rooms")
+                
+                elective_group.preferred_rooms.set(preferred_rooms)
+                logger.info(f"Rooms assigned to elective group: {[str(room.id) for room in elective_group.preferred_rooms.all()]}")
+
         # Prepare response data
-            response_data = ElectiveGroupSerializer(elective_group).data
-            response_data['updated_subjects'] = updated_subjects
-            if not_found_subjects:
-                response_data['not_found_subjects'] = not_found_subjects
+        response_data = ElectiveGroupGetSerializer(elective_group).data
+        response_data['updated_subjects'] = updated_subjects
+        if not_found_subjects:
+            response_data['not_found_subjects'] = not_found_subjects
 
-            # Determine the appropriate status code
-            if created:
-                status_code = status.HTTP_201_CREATED
-            elif updated_subjects:
-                status_code = status.HTTP_200_OK
-            else:
-                status_code = status.HTTP_304_NOT_MODIFIED
+        # Determine the appropriate status code
+        if created:
+            status_code = status.HTTP_201_CREATED
+        elif updated_subjects or 'preferredRooms' in data:
+            status_code = status.HTTP_200_OK
+        else:
+            status_code = status.HTTP_304_NOT_MODIFIED
 
+        logger.info(f"Final response data: {response_data}")
         return Response(response_data, status=status_code)
     
+    logger.error(f"Serializer errors: {serializer.errors}")
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-
-
-
-
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def elective_subject_add_view(request, pk):
     try:
-        print(pk)
         standard = Standard.objects.get(id=pk)
     except Standard.DoesNotExist:
         return Response({"error": "Standard not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -364,3 +477,80 @@ def elective_subject_add_view(request, pk):
 
     serializer = ElectiveSubjectAddSerializer(data)
     return Response(serializer.data)
+
+
+
+
+@api_view(["GET", "DELETE", "PUT"])
+@permission_classes([IsAuthenticated])
+def classsubject_instance_manager(request, pk):
+    if not pk:
+        return Response({"error": "Primary key (pk) is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        class_subject = ClassSubject.objects.filter(school=request.user, id=pk).prefetch_related(
+            Prefetch('class_subject_subjects', queryset=ClassSubjectSubject.objects.all().select_related('subject').prefetch_related('assigned_teachers'))
+        ).first()
+        
+        if not class_subject:
+            return Response({"error": "ClassSubject not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    except ObjectDoesNotExist:
+        return Response({"error": "ClassSubject not found."}, status=status.HTTP_404_NOT_FOUND)
+    except DatabaseError as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    if request.method == 'GET':
+        serializer = ClassSubjectSerializer(class_subject)
+        return Response(serializer.data)
+    
+    elif request.method == 'DELETE':
+        try:
+            class_subject.delete()
+            return Response({"message": "ClassSubject deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        except DatabaseError as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'PUT':
+        serializer = ClassSubjectSerializer(class_subject, data=request.data, partial=True)
+        if serializer.is_valid():
+            try:
+                serializer.save()
+                return Response(serializer.data)
+            except DatabaseError as e:
+                return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    
+    return Response({"error": "Invalid request method."}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+
+
+@api_view(['PUT'])
+def update_class_subject(request, pk):
+
+    try:
+        class_subject = ClassSubject.objects.get(pk=pk)
+    except ClassSubject.DoesNotExist:
+        return Response({"error": "ClassSubject not found"}, status=status.HTTP_404_NOT_FOUND)
+    print(request.data)
+    serializer = ClassSubjectUpdateSerializer(class_subject, data=request.data, partial=True)
+    if serializer.is_valid():
+        try:
+            serializer.save()
+            return Response(serializer.data)
+        except serializers.ValidationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+    
+
+
+
+
+
+

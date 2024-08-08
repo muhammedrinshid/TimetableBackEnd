@@ -4,7 +4,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.postgres.forms import SimpleArrayField
 from .models import User,Subject
 from .models import Teacher  # Replace with the correct import path for Teacher model
-from .models import Standard, ElectiveGroup, Classroom
+from .models import Standard, ElectiveGroup, Classroom,Room
 
 @admin.register(Standard)
 class StandardAdmin(admin.ModelAdmin):
@@ -15,10 +15,11 @@ class StandardAdmin(admin.ModelAdmin):
 
 @admin.register(ElectiveGroup)
 class ElectiveGroupAdmin(admin.ModelAdmin):
-    list_display = ('name', 'school')
+    list_display = ('name', 'school',)
     search_fields = ('name',)
     list_filter = ('school',)
     ordering = ('name',)
+    filter_horizontal = ('preferred_rooms',)
 
 @admin.register(Classroom)
 class ClassroomAdmin(admin.ModelAdmin):
@@ -117,5 +118,13 @@ class TeacherAdmin(admin.ModelAdmin):
             return self.readonly_fields + ('teacher_id', 'created_at')
         return self.readonly_fields
 
+
+
+class RoomAdmin(admin.ModelAdmin):
+    list_display = ('name', 'room_number', 'school', 'capacity', 'occupied','room_type')
+    search_fields = ('name', 'room_number', 'school__username')
+    list_filter = ('school', 'occupied')
+
+admin.site.register(Room, RoomAdmin)
 
 admin.site.register(User, CustomUserAdmin)
