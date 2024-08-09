@@ -191,11 +191,12 @@ def classroom_instance_manager(request,pk=None):
             try:
                 if room_data:
                     current_room=classroom.room
+                    room_name = f"room {classroom.standard.short_name} {classroom.name}"
+
                     if current_room:
                         current_room.occupied=False
                         current_room.name=f"{current_room.room_number} free room"
                         current_room.save()
-                    room_name = f"room {classroom.standard.short_name} {classroom.name}"
                     if 'id' in room_data:  # Existing room
                         try:
                             room = Room.objects.get(pk=room_data['id'])

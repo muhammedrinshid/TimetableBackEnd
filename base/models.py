@@ -1,7 +1,7 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 import uuid
 from django.db import models
-from django.db.models import UniqueConstraint,Max
+from django.db.models import UniqueConstraint,Max,Sum
 from django.core.exceptions import ValidationError
 from django.contrib.postgres.fields import ArrayField
 
@@ -117,6 +117,12 @@ class User(AbstractUser):
             class_subject.elective_group_added_correctly 
             for class_subject in class_subjects
         )
+    @property
+    def is_ready_for_timetable(self):
+        return (self.all_classes_subject_assigned_atleast_one_teacher and 
+                self.all_classes_assigned_subjects and 
+                self.all_class_subjects_have_correct_elective_groups)
+
 
     # Role field (for future use)
     ROLE_CHOICES = [
@@ -315,6 +321,9 @@ class ElectiveGroup(models.Model):
     standard=models.ForeignKey(Standard,on_delete=models.CASCADE,related_name="electives_groups",null=True)
     school = models.ForeignKey(User, related_name='electivegroups',on_delete=models.CASCADE)
     preferred_rooms=models.ManyToManyField(Room,related_name="electvie_grops")
+    @property
+    def be_included_in_second_selection(self):
+        return self.class_subjects.count() > 1
     class Meta:
         verbose_name = "Elective Group"
         verbose_name_plural = "Elective Groups"
@@ -341,13 +350,16 @@ class Classroom(models.Model):
     room = models.OneToOneField(Room, null=True, blank=True, related_name="classroom", on_delete=models.SET_NULL)
     
 
+   
     @property
-    def subject_count(self):
-        return ClassSubject.objects.filter(class_room=self).count()
-
+    def total_lessons_per_week(self):
+        result = self.class_subjects.aggregate(total_lessons=Sum('lessons_per_week'))
+        return result['total_lessons'] or 0
     @property
     def is_fully_allocated_subjects_to_class_rooms(self):
-        return self.subject_count == self.school.teaching_slots
+        number_of_lessons_in_week=self.school.teaching_slots*len(self.school.working_days)
+
+        return self.total_lessons_per_week == number_of_lessons_in_week
     @property
     def lessons_assigned_subjects(self):
         return sum(cs.lessons_per_week for cs in self.class_subjects.all())
@@ -422,6 +434,18 @@ class ClassSubject(models.Model):
             return True
         else:
             return self.elective_group is not None
+    @property
+    def be_included_in_first_selection(self):
+        if not self.elective_or_core:
+            return True
+
+        if len(self.subjects.all()) > 1:
+            return False
+
+        if self.elective_group is not None and len(self.elective_group.class_subjects.all()) > 1:
+            return False
+
+        return True
 
     def save(self, *args, **kwargs):
         # Call clean method to perform validation
@@ -448,6 +472,9 @@ class ClassSubject(models.Model):
         # Set elective_group to None if elective_or_core is False
         if not self.elective_or_core:
             self.elective_group = None
+        
+        if not self.elective_or_core and len(self.subjects.all()) > 1:
+             raise ValidationError('Core subjects must have at most one subject.')
 
 
     class Meta:

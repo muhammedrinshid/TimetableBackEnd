@@ -1,4 +1,4 @@
-from .domain import Lesson, Room
+from .domain import Lesson, ClassroomAssignment
 from optapy import constraint_provider
 from optapy.constraint import Joiners, ConstraintFactory
 from optapy.score import HardSoftScore
@@ -32,7 +32,7 @@ def teacher_conflict(constraint_factory: ConstraintFactory):
     return constraint_factory.for_each(Lesson) \
                 .join(Lesson,
                       Joiners.equal(lambda lesson: lesson.timeslot),
-                      Joiners.equal(lambda lesson: lesson.teacher),
+                      Joiners.equal(lambda lesson: lesson.alotted_teacher),
                       Joiners.less_than(lambda lesson: lesson.id)
                 ) \
                 .penalize("Teacher conflict", HardSoftScore.ONE_HARD)
@@ -42,7 +42,7 @@ def student_group_conflict(constraint_factory: ConstraintFactory):
     return constraint_factory.for_each(Lesson) \
             .join(Lesson,
                   Joiners.equal(lambda lesson: lesson.timeslot),
-                  Joiners.equal(lambda lesson: lesson.student_group),
+                  Joiners.equal(lambda lesson: lesson.class_section),
                   Joiners.less_than(lambda lesson: lesson.id)
             ) \
             .penalize("Student group conflict", HardSoftScore.ONE_HARD)
