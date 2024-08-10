@@ -19,7 +19,15 @@ from django.db import DatabaseError
 from django.core.exceptions import ObjectDoesNotExist
 from django.shortcuts import get_object_or_404
 logger = logging.getLogger(__name__)
+from uuid import UUID
 
+
+def is_valid_uuid(uuid_to_test, version=4):
+    try:
+        uuid_obj = UUID(uuid_to_test, version=version)
+    except ValueError:
+        return False
+    return str(uuid_obj) == uuid_to_test
 
 # helper function to get latest divison
 def get_next_division_name(existing_divisions):
@@ -395,14 +403,24 @@ def update_elective_group(request):
             )
 
         # Get or create the ElectiveGroup
-        elective_group, created = ElectiveGroup.objects.get_or_create(
-            id=data.get('groupId'),  # Use the provided groupId if it exists
-            defaults={
-                'name': data['groupName'],
-                'standard': standard,
-                'school': request.user
-            }
-        )
+        group_id = data.get('groupId')
+
+        if group_id and is_valid_uuid(group_id):
+            elective_group, created = ElectiveGroup.objects.get_or_create(
+                id=group_id,  # Use the provided groupId if it's a valid UUID
+                defaults={
+                    'name': data['groupName'],
+                    'standard': standard,
+                    'school': request.user
+                }
+            )
+        else:
+            elective_group = ElectiveGroup.objects.create(
+                name=data['groupName'],
+                standard=standard,
+                school=request.user
+            )
+            created = True
         if not created:
             elective_group.name = data['groupName']
             elective_group.standard = standard

@@ -30,7 +30,7 @@ def run_optimization(request):
         .buildSolver() \
         .solve(problem)
 
-    print_timetable(solution)
+    # print_timetable(solution)
     return solution
 def create_problem_from_django_models(user):
     from ..models import User, Room, Grade, Standard, Classroom, ClassSubject, ClassSubjectSubject, Teacher
