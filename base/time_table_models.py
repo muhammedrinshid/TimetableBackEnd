@@ -3,6 +3,9 @@ from django.db import models
 from django.contrib.auth import get_user_model
 
 from .models import User
+from django.dispatch import receiver
+from django.db.models.signals import post_save
+
 
 
 class Timetable(models.Model):
@@ -10,8 +13,8 @@ class Timetable(models.Model):
     name = models.CharField(max_length=100)
     school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='timetables')
     score = models.IntegerField(null=True, blank=True)
-    optimal = models.BooleanField(default=False)
-    feasible = models.BooleanField(default=False)
+    optimal = models.BooleanField(default=False, null=True, blank=True)
+    feasible = models.BooleanField(default=False, null=True, blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     is_default = models.BooleanField(default=False)
@@ -19,6 +22,19 @@ class Timetable(models.Model):
     def __str__(self):
         return self.name
 
+    def set_as_default(self):
+        Timetable.objects.filter(school=self.school, is_default=True).update(is_default=False)
+        self.is_default = True
+        self.save()
+
+@receiver(post_save, sender=Timetable)
+def set_default_timetable(sender, instance, created, **kwargs):
+    if created:
+        # If this is the only timetable for the user, set it as default
+        if Timetable.objects.filter(school=instance.school).count() == 1:
+            instance.set_as_default()
+            
+            
 class StandardLevel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     standard_id = models.UUIDField()  # Changed to UUIDField and removed unique constraint
@@ -101,7 +117,6 @@ class Timeslot(models.Model):
 
     def __str__(self):
         return f"{self.day_of_week} - Period {self.period}"
-
 class Lesson(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='lessons')
@@ -109,9 +124,15 @@ class Lesson(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     alotted_teacher = models.ForeignKey(Tutor, on_delete=models.CASCADE, related_name='allotted_lessons')
     # available_teachers = models.ManyToManyField(Tutor, related_name='available_lessons')
-    class_section = models.ForeignKey(ClassSection, on_delete=models.CASCADE)
+    class_sections = models.ManyToManyField(ClassSection, through='LessonClassSection', related_name="lessons")
     classroom_assignment = models.ForeignKey(ClassroomAssignment, on_delete=models.CASCADE)
     timeslot = models.ForeignKey(Timeslot, on_delete=models.CASCADE)
 
     def __str__(self):
-        return f"{self.course.name} - {self.class_section} - {self.timeslot}"
+        return f"{self.course.name} - {self.timeslot}"
+
+    
+class LessonClassSection(models.Model):
+    lesson = models.ForeignKey('Lesson', on_delete=models.CASCADE)
+    class_section = models.ForeignKey('ClassSection', on_delete=models.CASCADE)
+    number_of_students = models.IntegerField()

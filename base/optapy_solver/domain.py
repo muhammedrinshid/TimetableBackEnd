@@ -23,8 +23,6 @@ class ClassroomAssignment:
     def __str__(self):
         return f"Room(id={self.id}, name={self.name})"
     
-    
-    
 class ClassroomAssignmentManager:
     _registry = {}
 
@@ -36,6 +34,14 @@ class ClassroomAssignmentManager:
             new_instance = ClassroomAssignment(id, name,capacity,room_type,occupied)
             cls._registry[id] = new_instance
             return new_instance
+        
+        
+        
+        
+        
+        
+        
+        
 
 @problem_fact
 class Timeslot:
@@ -56,6 +62,42 @@ class Timeslot:
     )
 
 
+
+
+@problem_fact
+class ElectiveGrp:
+    def __init__(self, id, name,standard):
+        self.id = id
+        self.name = name
+        self.standard=standard
+
+    @planning_id
+    def get_id(self):
+        return self.id
+
+    def __str__(self):
+        return (
+        f"ElectiveGrp("
+        f"id={self.id}, "
+        f"name={self.name})"
+    )
+
+class ElectiveGrpManager:
+    _registry = {}
+
+    @classmethod
+    def get_or_create(cls, id, name,standard):
+        if id in cls._registry:
+            return cls._registry[id]
+        else:
+            new_instance = ElectiveGrp(id, name,standard)
+            cls._registry[id] = new_instance
+            return new_instance
+        
+        
+        
+        
+        
     
 @problem_fact
 class StandardLevel:
@@ -69,6 +111,24 @@ class StandardLevel:
     def __str__(self):
         return f" standard ={self.short_name}"
     
+
+class StandardLevelManager:
+    _registry = {}
+
+    @classmethod
+    def get_or_create(cls, id,short_name):
+        if id in cls._registry:
+            return cls._registry[id]
+        else:
+            new_instance = StandardLevel(id,short_name)
+            cls._registry[id] = new_instance
+            return new_instance
+
+
+
+
+
+
 
 # Classroom
 @problem_fact
@@ -85,6 +145,23 @@ class ClassSection():
          return f"Classroom {self.standard.short_name} - {self.division}"
 
 
+class ClassSectionManager:
+    _registry = {}
+
+    @classmethod
+    def get_or_create(cls, id, standard,division,name):
+        if id in cls._registry:
+            return cls._registry[id]
+        else:
+            new_instance = ClassSection(id,standard,division,name)
+            cls._registry[id] = new_instance
+            return new_instance
+
+
+        
+        
+        
+        
         
 # Subject
 @problem_fact
@@ -114,6 +191,12 @@ class CourseManager:
             return new_instance
 
 
+
+
+
+
+
+
 @problem_fact
 class Tutor:
     def __init__(self, id, name):
@@ -141,16 +224,29 @@ class TutorManager:
 
     
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 @planning_entity
 class Lesson:
-    def __init__(self, id, subject, available_teachers,class_section, timeslot=None, room=None,alotted_teacher=None,):
+    def __init__(self, id, subject, available_teachers,class_sections,lesson_no, timeslot=None, room=None,alotted_teacher=None,elective=None,students_distribution=None,):
         self.id = id
         self.subject = subject
         self.alotted_teacher = alotted_teacher
         self.available_teachers = available_teachers
-        self.class_section = class_section
+        self.class_sections = class_sections
         self.timeslot = timeslot
         self.room = room
+        self.elective=elective
+        self.students_distribution=students_distribution
+        self.lesson_no=lesson_no
 
     @planning_id
     def get_id(self):
@@ -191,6 +287,7 @@ class Lesson:
             f"room={self.room}, "
             f"teacher={self.alotted_teacher}, "
             f"subject={self.subject}, "
+            f"number={self.lesson_no}, "
             f")"
         )
 

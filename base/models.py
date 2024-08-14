@@ -323,13 +323,39 @@ class ElectiveGroup(models.Model):
     preferred_rooms=models.ManyToManyField(Room,related_name="electvie_grops")
     @property
     def be_included_in_second_selection(self):
-        return self.class_subjects.count() > 1
+        class_subjects_count = self.class_subjects.count()
+        if class_subjects_count > 1:
+            return True
+        elif class_subjects_count == 1:
+            class_subject = self.class_subjects.first()
+            if class_subject.subjects.count() > 1:
+                return True
+        return False
+
+
+      
+    def clean(self):
+        """
+        Custom validation to ensure all ClassSubjects in the group have the same name
+        and lessons_per_week.
+        """
+        class_subjects = self.class_subjects.all()
+
+        if class_subjects.exists():
+            # Check if all class subjects have the same name
+            first_name = class_subjects.first().name
+            if not all(cs.name == first_name for cs in class_subjects):
+                raise ValidationError("All ClassSubjects in the group must have the same name.")
+
+            # Check if all class subjects have the same lessons_per_week
+            first_lessons_per_week = class_subjects.first().lessons_per_week
+            if not all(cs.lessons_per_week == first_lessons_per_week for cs in class_subjects):
+                raise ValidationError("All ClassSubjects in the group must have the same lessons_per_week.")
+
     class Meta:
         verbose_name = "Elective Group"
         verbose_name_plural = "Elective Groups"
         ordering = ['name']
-        
-        
       
 class Classroom(models.Model):
     """
