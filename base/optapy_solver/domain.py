@@ -236,7 +236,7 @@ class TutorManager:
     
 @planning_entity
 class Lesson:
-    def __init__(self, id, subject, available_teachers,class_sections,lesson_no, timeslot=None, room=None,alotted_teacher=None,elective=None,students_distribution=None,):
+    def __init__(self, id, subject, available_teachers,class_sections,lesson_no,is_elective=False, timeslot=None, room=None,alotted_teacher=None,elective=None,students_distribution=None,elective_subject_name=''):
         self.id = id
         self.subject = subject
         self.alotted_teacher = alotted_teacher
@@ -247,6 +247,9 @@ class Lesson:
         self.elective=elective
         self.students_distribution=students_distribution
         self.lesson_no=lesson_no
+        self.elective_subject_name=elective_subject_name
+        self.is_elective=is_elective
+        
 
     @planning_id
     def get_id(self):

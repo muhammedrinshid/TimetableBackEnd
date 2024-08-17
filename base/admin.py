@@ -5,6 +5,7 @@ from django.contrib.postgres.forms import SimpleArrayField
 from .models import User,Subject
 from .models import Teacher  # Replace with the correct import path for Teacher model
 from .models import Standard, ElectiveGroup, Classroom,Room
+from .time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection
 
 @admin.register(Standard)
 class StandardAdmin(admin.ModelAdmin):
@@ -132,10 +133,9 @@ admin.site.register(User, CustomUserAdmin)
 
 
 
-from .time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson
 
 class TimetableAdmin(admin.ModelAdmin):
-    list_display = ('name', 'school', 'score', 'optimal', 'feasible', 'is_default', 'created', 'updated')
+    list_display = ('name', 'school', 'score', 'optimal', 'feasible', 'is_default', 'created', 'updated',)
     list_filter = ('school', 'optimal', 'feasible', 'is_default')
     search_fields = ('name', 'school__username')  # Assuming User model has a username field
 
@@ -174,7 +174,7 @@ class TimeslotAdmin(admin.ModelAdmin):
     search_fields = ('day_of_week', 'period', 'timetable__name', 'school__username')
 
 class LessonAdmin(admin.ModelAdmin):
-    list_display = ('course', 'alotted_teacher', 'timeslot', 'timetable', 'school')
+    list_display = ('course', 'alotted_teacher', 'timeslot', 'timetable', 'school','elective_subject_name')
     list_filter = ('timetable', 'school', 'course')
     search_fields = ('course__name', 'alotted_teacher__name', 'timeslot__day_of_week', 'timetable__name', 'school__username')
 
@@ -182,7 +182,11 @@ class LessonAdmin(admin.ModelAdmin):
     def get_class_sections(self, obj):
         return ', '.join(section.name for section in obj.class_sections.all())
     get_class_sections.short_description = 'Class Sections'
-
+@admin.register(LessonClassSection)
+class LessonClassSectionAdmin(admin.ModelAdmin):
+    list_display = ('lesson', 'class_section', 'number_of_students')
+    search_fields = ('lesson__name', 'class_section__name')  # Adjust field names if necessary
+    list_filter = ('lesson', 'class_section')
 # Register the models with the admin site
 admin.site.register(Timetable, TimetableAdmin)
 admin.site.register(StandardLevel, StandardLevelAdmin)

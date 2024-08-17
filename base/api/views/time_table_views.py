@@ -6,35 +6,62 @@ from ...optapy_solver.solver import run_optimization
 from ...time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection
 from django.db import transaction
 
+from django.db.models import Prefetch
 from ..serializer.time_table_serializer import TimetableSerializer,TimetableUpdateSerializer
 from collections import defaultdict
 
-from django.db import transaction
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from ...models import  Teacher, Subject, Room,Classroom,Standard
+from ..serializer.time_table_serializer import TeacherDayTimetableSerializer,StudentWeekTimetableSerializer,StudentDayTimetableSerializer,TeacherWeekTimetableSerializer
+from django.shortcuts import get_object_or_404
 
-from django.db import transaction
 
+
+
+
+
+
+
+def parse_hard_violations_from_score(score):
+    # Implement parsing logic here if score is a string or complex object
+    # For example, if score is a string like "-2hard/0soft", parse it accordingly
+    # Return the number of hard constraint violations
+    hard_violations = 0
+    if isinstance(score, str):
+        parts = score.split('/')
+        for part in parts:
+            if 'hard' in part:
+                hard_violations = int(part.split('hard')[0])
+                break
+    return hard_violations
 def save_optimization_results(user, solution):
     try:
         with transaction.atomic():
             # Create Timetable
             score = solution.get_score()
+            number_of_lessons = (user.teaching_slots)
+
             timetable = Timetable.objects.create(
                 name=f"Timetable_{user.username}_{Timetable.objects.filter(school=user).count() + 1}",
                 school=user,
+                number_of_lessons=number_of_lessons,
             )
 
             for lesson in solution.get_lesson_list():
                 # Process Course
+                subject=Subject.objects.get(id=lesson.subject.id)
                 course, _ = Course.objects.get_or_create(
-                    subject_id=lesson.subject.id,
+                    subject=subject,
                     timetable=timetable,
                     school=user,
                     defaults={'name': lesson.subject.name}
                 )
 
                 # Process Tutor
+                teacher=Teacher.objects.get(id=lesson.alotted_teacher.id)
                 tutor, _ = Tutor.objects.get_or_create(
-                    teacher_id=lesson.alotted_teacher.id,
+                    teacher=teacher,
                     timetable=timetable,
                     school=user,
                     defaults={'name': lesson.alotted_teacher.name}
@@ -43,8 +70,9 @@ def save_optimization_results(user, solution):
                 # Process ClassroomAssignment
                 room = lesson.get_room()
                 if room:
+                    room=Room.objects.get(id=room.id)
                     classroom_assignment, _ = ClassroomAssignment.objects.get_or_create(
-                        room_id=room.id,
+                        room=room,
                         timetable=timetable,
                         school=user,
                         defaults={
@@ -76,20 +104,23 @@ def save_optimization_results(user, solution):
                     course=course,
                     alotted_teacher=tutor,
                     classroom_assignment=classroom_assignment,
-                    timeslot=timeslot_obj
+                    timeslot=timeslot_obj,
+                    elective_subject_name=lesson.elective_subject_name,
+                    is_elective=lesson.is_elective
                 )
 
                 # Process ClassSection
                 for class_section in lesson.class_sections:
+                    std=Standard.objects.get(id=class_section.standard.id)
                     standard, _ = StandardLevel.objects.get_or_create(
                         name=class_section.standard.short_name,
                         timetable=timetable,
                         school=user,
-                        standard_id=class_section.standard.id
+                        standard=std
                     )
-
+                    classroom=Classroom.objects.get(id=class_section.id)
                     class_section_obj, _ = ClassSection.objects.get_or_create(
-                        classroom_id=class_section.id,
+                        classroom=classroom,
                         timetable=timetable,
                         school=user,
                         defaults={
@@ -102,7 +133,8 @@ def save_optimization_results(user, solution):
                     # Get number of students from the lesson's students_distribution
                     # Ensure students_distribution is not None
                     students_distribution = lesson.students_distribution or {}
-                    number_of_students = students_distribution.get(class_section.id, 0)
+                    number_of_students = students_distribution.get(str(class_section.id), 0)
+
 
                     # Create LessonClassSection relationship
                     LessonClassSection.objects.create(
@@ -125,28 +157,42 @@ def save_optimization_results(user, solution):
 
 
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def run_module_view(request):
-    
-    
+    # Run the optimization process
     optimization_result = run_optimization(request=request)
-    try:
-        timetable = save_optimization_results(request.user, optimization_result)
-        # serializer = TimetableSerializer(timetable)
+
+    # Access the score
+    score = optimization_result.get_score()  # or use optimization_result.score
+
+    # Check if score indicates any hard constraint violations
+    # Assuming score is an object or string that includes information on hard constraint violations
+    hard_constraints_violated = score.hard_constraint_violations == 0 if hasattr(score, 'hard_constraint_violations') else parse_hard_violations_from_score(score)
+
+    if hard_constraints_violated == 0:
+        try:
+            # Save the optimization results
+            timetable = save_optimization_results(request.user, optimization_result)
+            # serializer = TimetableSerializer(timetable)
+            return Response({
+                "message": "Timetable optimization completed and saved",
+                # "timetable": serializer.data
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                "message": "Error saving optimization results",
+                "error": str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    else:
+        # Return an error if there are hard constraint violations
         return Response({
-            "message": "Timetable optimization completed and saved",
-            # "timetable": serializer.data
-        }, status=status.HTTP_200_OK)
-    except Exception as e:
-        return Response({
-            "message": "Error saving optimization results",
-            "error": str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
+            "message": "Optimization failed due to hard constraint violations",
+            "violations": hard_constraints_violated
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+        
+        
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def check_class_subjects(request):
@@ -235,3 +281,159 @@ def timetable_detail(request, timetable_id):
         return Response({'message': 'Timetable deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
 
 
+
+
+
+
+
+
+
+
+# fetching results
+def get_teacher_day_timetable(user, timetable, day_of_week):
+    # Get all teachers for the school
+    teachers = Teacher.objects.filter(school=user)
+    
+    day_timetable = []
+    
+    for teacher in teachers:
+        # Check if there's a Tutor object for this teacher and timetable
+        tutor = Tutor.objects.filter(teacher=teacher, timetable=timetable).first()
+        
+        if tutor:
+            # Initialize sessions with None for each period
+            sessions = [None] * timetable.number_of_lessons
+            
+            # Get all lessons for this tutor on the specified day
+            lessons = Lesson.objects.filter(
+                timetable=timetable,
+                alotted_teacher=tutor,
+                timeslot__day_of_week=day_of_week
+            ).order_by('timeslot__period')
+            # Fill in the sessions with actual lesson data
+            for lesson in lessons:
+                sessions[lesson.timeslot.period - 1] = lesson
+            
+            # Remove any remaining None values
+            # sessions = [s for s in sessions if s is not None]
+            if sessions:  # Only add to day_timetable if there are sessions
+                day_timetable.append({
+                    'instructor': tutor,
+                    'sessions': sessions
+                })
+    
+    return day_timetable
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_teacher_single_day_timetable(request, day_of_week):
+    user = request.user
+    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    day_timetable = get_teacher_day_timetable(user, timetable, day_of_week)
+    
+    serializer = TeacherDayTimetableSerializer(day_timetable, many=True)
+    return Response(serializer.data)
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_teacher_week_timetable(request):
+    user = request.user
+    print("hi")
+
+    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    
+    # Get working days
+    working_days = user.working_days
+
+    week_timetable = {}
+    for day_code in working_days:
+        day_name =day_code
+        day_timetable = get_teacher_day_timetable(user, timetable, day_name)
+        week_timetable[day_code] = day_timetable
+    
+    serializer = TeacherWeekTimetableSerializer(week_timetable, working_days=working_days)
+    return Response(serializer.data)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def get_student_day_timetable(user, timetable, day_of_week):
+    class_sections = ClassSection.objects.filter(
+        timetable=timetable
+    ).select_related(
+        'classroom__standard', 'classroom__room'
+    ).prefetch_related(
+        Prefetch(
+            'lessons',
+            queryset=Lesson.objects.filter(
+                timetable=timetable,
+                timeslot__day_of_week=day_of_week
+            ).select_related(
+                'course', 'alotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
+            ).prefetch_related(
+                'lessonclasssection_set'
+            ),
+            to_attr='day_lessons'
+        )
+    )
+
+    day_timetable = []
+
+    for class_section in class_sections:
+        sessions = defaultdict(list)
+        for lesson in class_section.day_lessons:
+            sessions[lesson.timeslot.period - 1].append(lesson)
+
+        formatted_sessions = [sessions[i] for i in range(timetable.number_of_lessons)]
+
+        day_timetable.append({
+            'classroom': class_section,
+            'sessions': formatted_sessions
+        })
+
+    return day_timetable
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_student_single_day_timetable(request, day_of_week):
+    user = request.user
+    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    day_timetable = get_student_day_timetable(user, timetable, day_of_week)
+    
+    serializer = StudentDayTimetableSerializer(day_timetable, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_student_week_timetable(request):
+    user = request.user
+    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    
+    working_days = user.working_days
+
+    week_timetable = {}
+    for day_code in working_days:
+        day_timetable = get_student_day_timetable(user, timetable, day_code)
+        week_timetable[day_code] = day_timetable
+    
+    serializer = StudentWeekTimetableSerializer(week_timetable, working_days=working_days)
+    return Response(serializer.data)

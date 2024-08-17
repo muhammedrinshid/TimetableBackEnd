@@ -1,12 +1,11 @@
 import uuid
 from django.db import models
-from django.contrib.auth import get_user_model
 
 from .models import User
 from django.dispatch import receiver
 from django.db.models.signals import post_save
 
-
+from .models import Classroom,Subject,Teacher,Room,Standard
 
 class Timetable(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -15,9 +14,11 @@ class Timetable(models.Model):
     score = models.IntegerField(null=True, blank=True)
     optimal = models.BooleanField(default=False, null=True, blank=True)
     feasible = models.BooleanField(default=False, null=True, blank=True)
+    number_of_lessons=models.IntegerField(editable=True,null=True,blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     is_default = models.BooleanField(default=False)
+   
 
     def __str__(self):
         return self.name
@@ -37,61 +38,61 @@ def set_default_timetable(sender, instance, created, **kwargs):
             
 class StandardLevel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    standard_id = models.UUIDField()  # Changed to UUIDField and removed unique constraint
+    standard = models.ForeignKey(Standard,on_delete=models.SET_NULL,related_name='class_sectons',null=True)  # Changed to UUIDField and removed unique constraint
     name = models.CharField(max_length=50)
     timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='standard_levels')
     school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='standard_levels')
 
-    class Meta:
-        unique_together = ('standard_id', 'timetable')  # Ensure uniqueness within a timetable
+    # class Meta:
+        # unique_together = ('standard_id', 'timetable')  # Ensure uniqueness within a timetable
 
     def __str__(self):
         return self.name
 
 class ClassSection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    classroom_id = models.UUIDField()  # Changed to UUIDField and removed unique constraint
+    classroom = models.ForeignKey(Classroom,on_delete=models.SET_NULL,related_name='class_sectons',null=True)  # Changed to UUIDField and removed unique constraint
     standard = models.ForeignKey(StandardLevel, on_delete=models.CASCADE)
     division = models.CharField(max_length=10)
     name = models.CharField(max_length=100)
     timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='class_sections')
     school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='class_sections')
 
-    class Meta:
-        unique_together = ('classroom_id', 'timetable')  # Ensure uniqueness within a timetable
+    # class Meta:
+        # unique_together = ('classroom_id', 'timetable')  # Ensure uniqueness within a timetable
 
     def __str__(self):
         return f"{self.standard.name} - {self.division}"
 
 class Course(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    subject_id = models.UUIDField()  # Changed to UUIDField and removed unique constraint
+    subject = models.ForeignKey(Subject,on_delete=models.SET_NULL,related_name='courses',null=True)
     name = models.CharField(max_length=100)
     timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='courses')
     school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='courses')
 
-    class Meta:
-        unique_together = ('subject_id', 'timetable')  # Ensure uniqueness within a timetable
+    # class Meta:
+    # unique_together = ('subject_id', 'timetable')  # Ensure uniqueness within a timetable
 
     def __str__(self):
         return self.name
 
 class Tutor(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    teacher_id = models.UUIDField()  # Changed to UUIDField and removed unique constraint
+    teacher = models.ForeignKey(Teacher,on_delete=models.SET_NULL,related_name='tutors',null=True) # Changed to UUIDField and removed unique constraint
     name = models.CharField(max_length=100)
     timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='tutors')
     school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tutors')
 
-    class Meta:
-        unique_together = ('teacher_id', 'timetable')  # Ensure uniqueness within a timetable
+    # class Meta:
+        # unique_together = ('teacher_id', 'timetable')  # Ensure uniqueness within a timetable
 
     def __str__(self):
         return self.name
 
 class ClassroomAssignment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    room_id = models.UUIDField()  # Changed to UUIDField and removed unique constraint
+    room = models.ForeignKey(Room,on_delete=models.SET_NULL,related_name='classroom_asingments',null=True)  # Changed to UUIDField and removed unique constraint
     name = models.CharField(max_length=100)
     capacity = models.IntegerField()
     room_type = models.CharField(max_length=50)
@@ -99,8 +100,8 @@ class ClassroomAssignment(models.Model):
     timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='classroom_assignments')
     school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='classroom_assignments')
 
-    class Meta:
-        unique_together = ('room_id', 'timetable')  # Ensure uniqueness within a timetable
+    # class Meta:
+        # unique_together = ('room_id', 'timetable')  # Ensure uniqueness within a timetable
 
     def __str__(self):
         return self.name
@@ -127,7 +128,8 @@ class Lesson(models.Model):
     class_sections = models.ManyToManyField(ClassSection, through='LessonClassSection', related_name="lessons")
     classroom_assignment = models.ForeignKey(ClassroomAssignment, on_delete=models.CASCADE)
     timeslot = models.ForeignKey(Timeslot, on_delete=models.CASCADE)
-
+    is_elective=models.BooleanField(default=False, null=True, blank=True)
+    elective_subject_name=models.CharField(max_length=100,null=True,blank=True)
     def __str__(self):
         return f"{self.course.name} - {self.timeslot}"
 

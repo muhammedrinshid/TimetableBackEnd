@@ -24,7 +24,7 @@ def run_optimization(request):
     .withEntityClasses(Lesson) \
     .withSolutionClass(TimeTable) \
     .withConstraintProviderClass(define_constraints) \
-    .withTerminationSpentLimit(Duration.ofSeconds(10))
+    .withTerminationSpentLimit(Duration.ofSeconds(150))
 
     solution = solver_factory_create(solver_config) \
         .buildSolver() \

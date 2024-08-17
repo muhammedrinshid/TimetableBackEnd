@@ -46,86 +46,15 @@ def find_suitable_room(students_distribution, remaining_rooms):
     
     # If no suitable room is found, return None
     return None
-def create_elective_lesson_data(input_data):
-    result = []
-    
-    for group in input_data:
-        grp_id = group['grp_id']
-        elective_subject_name = group['elective_subject_name']
-        lessons_per_week = group['lessons_per_week']
-        
-        # Extract unique classroom IDs
-        unique_classroom_ids = set()
 
-        for subject_id, subject_data in group['subjectDistributionData'].items():
-            for classroom in subject_data['class_rooms']:
-                unique_classroom_ids.add(classroom['id'])
 
-        # Convert set back to a list if needed
-        unique_classroom_ids_list = list(unique_classroom_ids)
-        available_room_stack = {}
 
-        for room_id in unique_classroom_ids_list:
-            try:
-                # Retrieve the ClassRoom instance by ID
-                room_instance = Classroom.objects.get(id=room_id)
-                available_room_stack[room_id]=room_instance.room
-            except Classroom.DoesNotExist:
-                print(f"ClassRoom with ID {room_id} does not exist.")
-        
-        for subject_id, subject_data in group['subjectDistributionData'].items():
-            # Pass the entire subject_data to distribute_students
-            distributed_students = distribute_students(subject_data)
-            
-            for room_data in distributed_students:
-                suitable_room=find_suitable_room(room_data['students'],available_room_stack)
-                lesson_data = {
-                    'subject_id': subject_id,
-                    'available_teachers_ids': subject_data['available_teachers'],
-                    'class_section_ids': [student['id'] for student in room_data['students']],
-                    'elective': grp_id,
-                    'students_distribution': {student['id']: student['students_from_this_division'] 
-                                              for student in room_data['students']},
-                    'lessons_per_week': lessons_per_week,
-                    'elective_subject_name': elective_subject_name,
-                    'room':suitable_room
-                }
-                result.append(lesson_data)
-    
-    return result
-    
-def distribute_students(data,avg_per_classroom=40):
-    total_students = data["total_students"]
-    divisions = data["class_rooms"]
-    avg_per_classroom = avg_per_classroom
-    
-    if total_students <= avg_per_classroom + 6:
-        return [{"room": 1, "students": divisions}]
-    
-    current_room = {"room": 1, "students": []}
-    current_count = 0
-    rooms = []
 
-    for division in sorted(divisions, key=lambda x: x["students_from_this_division"], reverse=True):
-        division_size = division["students_from_this_division"]
-        
-        if current_count == 0 and division_size > avg_per_classroom:
-            # If starting a new room and division exceeds average, put it alone
-            rooms.append({"room": len(rooms) + 1, "students": [division]})
-        elif current_count + division_size <= avg_per_classroom + 6:
-            # Add division to current room if it doesn't exceed average + 6
-            current_room["students"].append(division)
-            current_count += division_size
-        else:
-            # Current room is full, start a new room
-            rooms.append(current_room)
-            current_room = {"room": len(rooms) + 1, "students": [division]}
-            current_count = division_size
 
-    # Add the last room if it has students
-    if current_room["students"]:
-        rooms.append(current_room)
-    
+
+
+
+
 
 def get_all_elective_group_of_user(user):
     
@@ -185,6 +114,96 @@ def get_all_elective_group_of_user(user):
 
 
 
+
+
+
+
+
+
+
+
+
+def create_elective_lesson_data(input_data):
+    result = []
+    
+    for group in input_data:
+        grp_id = group['grp_id']
+        elective_subject_name = group['elective_subject_name']
+        lessons_per_week = group['lessons_per_week']
+        
+        # Extract unique classroom IDs
+        unique_classroom_ids = set()
+
+        for subject_id, subject_data in group['subjectDistributionData'].items():
+            for classroom in subject_data['class_rooms']:
+                unique_classroom_ids.add(classroom['id'])
+
+        # Convert set back to a list if needed
+        unique_classroom_ids_list = list(unique_classroom_ids)
+        available_room_stack = {}
+
+        for room_id in unique_classroom_ids_list:
+            try:
+                # Retrieve the ClassRoom instance by ID
+                room_instance = Classroom.objects.get(id=room_id)
+                available_room_stack[room_id]=room_instance.room
+            except Classroom.DoesNotExist:
+                print(f"ClassRoom with ID {room_id} does not exist.")
+        
+        for subject_id, subject_data in group['subjectDistributionData'].items():
+            # Pass the entire subject_data to distribute_students
+            distributed_students = distribute_students(subject_data)
+            for room_data in distributed_students:
+                suitable_room=find_suitable_room(room_data['students'],available_room_stack)
+                lesson_data = {
+                    'subject_id': subject_id,
+                    'available_teachers_ids': subject_data['available_teachers'],
+                    'class_section_ids': [student['id'] for student in room_data['students']],
+                    'elective': grp_id,
+                    'students_distribution': {student['id']: student['students_from_this_division'] 
+                                              for student in room_data['students']},
+                    'lessons_per_week': lessons_per_week,
+                    'elective_subject_name': elective_subject_name,
+                    'room':suitable_room
+                }
+                result.append(lesson_data)
+    
+    return result
+    
+def distribute_students(data,avg_per_classroom=40):
+    total_students = data["total_students"]
+    divisions = data["class_rooms"]
+    avg_per_classroom = avg_per_classroom
+    
+    if total_students <= avg_per_classroom + 6:
+        return [{"room": 1, "students": divisions}]
+    
+    current_room = {"room": 1, "students": []}
+    current_count = 0
+    rooms = []
+
+    for division in sorted(divisions, key=lambda x: x["students_from_this_division"], reverse=True):
+        division_size = division["students_from_this_division"]
+        
+        if current_count == 0 and division_size > avg_per_classroom:
+            # If starting a new room and division exceeds average, put it alone
+            rooms.append({"room": len(rooms) + 1, "students": [division]})
+        elif current_count + division_size <= avg_per_classroom + 6:
+            # Add division to current room if it doesn't exceed average + 6
+            current_room["students"].append(division)
+            current_count += division_size
+        else:
+            # Current room is full, start a new room
+            rooms.append(current_room)
+            current_room = {"room": len(rooms) + 1, "students": [division]}
+            current_count = division_size
+
+    # Add the last room if it has students
+    if current_room["students"]:
+        rooms.append(current_room)
+    return rooms
+    
+
 def create_elective_lesson_ojbects(data, school):
     lessons = []
 
@@ -218,7 +237,8 @@ def create_elective_lesson_ojbects(data, school):
             name=elective_group.name,
             standard=standard_obj
         )
-
+        elective_subject_name = item.get('elective_subject_name', '')
+        
         for lesson_no in range(1, item['lessons_per_week'] + 1):
             
 
@@ -230,6 +250,9 @@ def create_elective_lesson_ojbects(data, school):
                 lesson_no=lesson_no,
                 room=room,
                 elective=elective,
+                elective_subject_name=elective_subject_name,
+                is_elective=True,
+
                 students_distribution=item['students_distribution']
             )
             lessons.append(lesson)
@@ -270,6 +293,7 @@ def create_core_lesson_ojbects(school):
                                 class_sections=[classroom_obj],
                                 room=room_obj,
                                 lesson_no=lesson_no,
+                                elective_subject_name=class_subject.name
 
                             )
                             lessons.append(lesson)
