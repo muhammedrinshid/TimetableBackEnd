@@ -162,7 +162,7 @@ def save_optimization_results(user, solution):
 def run_module_view(request):
     # Run the optimization process
     optimization_result = run_optimization(request=request)
-
+    print(optimization_result)
     # Access the score
     score = optimization_result.get_score()  # or use optimization_result.score
 
@@ -171,6 +171,7 @@ def run_module_view(request):
     hard_constraints_violated = score.hard_constraint_violations == 0 if hasattr(score, 'hard_constraint_violations') else parse_hard_violations_from_score(score)
 
     if hard_constraints_violated == 0:
+        
         try:
             # Save the optimization results
             timetable = save_optimization_results(request.user, optimization_result)

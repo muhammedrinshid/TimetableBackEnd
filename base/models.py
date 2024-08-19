@@ -530,7 +530,7 @@ class ClassSubjectSubject(models.Model):
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     assigned_teachers = models.ManyToManyField(Teacher, related_name='class_subject_subjects')
     number_of_students=models.PositiveBigIntegerField(null=True,blank=True,default=0)
-    
+    preferred_rooms=models.ManyToManyField(Room,related_name="class_subject_subjects")
     @property
     def assigned_teachers_count(self):
         return self.assigned_teachers.count()

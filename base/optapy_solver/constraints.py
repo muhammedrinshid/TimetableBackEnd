@@ -76,6 +76,8 @@ def elective_group_timeslot_constraint(constraint_factory: ConstraintFactory):
 
 
 
+
+
 def avoid_continuous_subjects(constraint_factory: ConstraintFactory):
     return constraint_factory.for_each(Lesson) \
         .join(Lesson,

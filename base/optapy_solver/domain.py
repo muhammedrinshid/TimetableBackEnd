@@ -1,10 +1,13 @@
 from optapy import problem_fact, planning_id
-from optapy import planning_entity, planning_variable
+from optapy import planning_entity, planning_variable,planning_pin
 from optapy import planning_solution, planning_entity_collection_property, \
                    problem_fact_collection_property, \
                    value_range_provider, planning_score
 from optapy.score import HardSoftScore
 from datetime import time
+
+
+
 
 @problem_fact
 class ClassroomAssignment:
@@ -21,7 +24,7 @@ class ClassroomAssignment:
         return self.id
 
     def __str__(self):
-        return f"Room(id={self.id}, name={self.name})"
+        return f"Room( name={self.name})"
     
 class ClassroomAssignmentManager:
     _registry = {}
@@ -57,7 +60,7 @@ class Timeslot:
     def __str__(self):
         return (
         f"Timeslot("
-        f"id={self.id}, "
+        f"period={self.period}, "
         f"day_of_week={self.day_of_week})"
     )
 
@@ -78,7 +81,7 @@ class ElectiveGrp:
     def __str__(self):
         return (
         f"ElectiveGrp("
-        f"id={self.id}, "
+        
         f"name={self.name})"
     )
 
@@ -175,7 +178,7 @@ class Course:
         return self.id
 
     def __str__(self):
-        return f"subject (id={self.id}, name={self.name})"
+        return f"subject (name={self.name})"
     
     
 class CourseManager:
@@ -208,7 +211,7 @@ class Tutor:
         return self.id
 
     def __str__(self):
-        return f"Teacher(id={self.id}, name={self.name})"
+        return f"Teacher( name={self.name})"
     
 class TutorManager:
     _registry = {}
@@ -233,22 +236,22 @@ class TutorManager:
     
     
     
-    
 @planning_entity
 class Lesson:
-    def __init__(self, id, subject, available_teachers,class_sections,lesson_no,is_elective=False, timeslot=None, room=None,alotted_teacher=None,elective=None,students_distribution=None,elective_subject_name=''):
+    def __init__(self, id, subject, available_teachers, class_sections, lesson_no,available_rooms, is_elective=False,alotted_room=None, timeslot=None, alotted_teacher=None, elective=None, students_distribution=None, elective_subject_name=''):
         self.id = id
         self.subject = subject
         self.alotted_teacher = alotted_teacher
         self.available_teachers = available_teachers
+        self.alotted_room=alotted_room
         self.class_sections = class_sections
         self.timeslot = timeslot
-        self.room = room
-        self.elective=elective
-        self.students_distribution=students_distribution
-        self.lesson_no=lesson_no
-        self.elective_subject_name=elective_subject_name
-        self.is_elective=is_elective
+        self.available_rooms = available_rooms
+        self.elective = elective
+        self.students_distribution = students_distribution
+        self.lesson_no = lesson_no
+        self.elective_subject_name = elective_subject_name
+        self.is_elective = is_elective
         
 
     @planning_id
@@ -262,13 +265,14 @@ class Lesson:
     def set_timeslot(self, new_timeslot):
         self.timeslot = new_timeslot
 
-    @planning_variable(ClassroomAssignment, ["roomRange"])
-    def get_room(self):
-        return self.room
-    
+    @planning_variable(ClassroomAssignment, value_range_provider_refs=["roomRange"])
+    def get_alotted_room(self):
+        return self.alotted_room
 
     def set_room(self, new_room):
-        self.room = new_room
+        self.alotted_room = new_room
+
+   
     
     @planning_variable(Tutor, value_range_provider_refs=['teacherRange'])
     def get_allotted_teacher(self):
@@ -277,11 +281,14 @@ class Lesson:
     def set_allotted_teacher(self, teacher):
         self.alotted_teacher = teacher
 
-    
     @problem_fact_collection_property(Tutor)
     @value_range_provider('teacherRange')
     def get_teacher_range(self):
         return self.available_teachers
+    @problem_fact_collection_property(ClassroomAssignment)
+    @value_range_provider('roomRange')
+    def get_teacher_range(self):
+        return self.available_rooms
 
     def __str__(self):
         return (
@@ -294,17 +301,17 @@ class Lesson:
             f")"
         )
 
+
+
 def format_list(a_list):
     return ',\n'.join(map(str, a_list))
 
 @planning_solution
 class TimeTable:
-    def __init__(self, timeslot_list, room_list, lesson_list ,score=None):
+    def __init__(self, timeslot_list, room_list ,score=None):
         self.timeslot_list = timeslot_list
         self.room_list = room_list
-        self.lesson_list = lesson_list
         self.score = score
-        
         
         
         
@@ -314,10 +321,7 @@ class TimeTable:
     def get_timeslot_list(self):
         return self.timeslot_list
 
-    @problem_fact_collection_property(ClassroomAssignment)
-    @value_range_provider("roomRange")
-    def get_room_list(self):
-        return self.room_list
+    
    
 
 
