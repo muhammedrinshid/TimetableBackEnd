@@ -109,7 +109,6 @@ def get_all_elective_group_of_user(user):
             "lessons_per_week":lessons_per_week,
             "elective_subject_name":elective_subject_name,
         })
-
     return(result)
 
 

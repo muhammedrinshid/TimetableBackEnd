@@ -174,7 +174,7 @@ def run_module_view(request):
         try:
             # Save the optimization results
             timetable = save_optimization_results(request.user, optimization_result)
-            # serializer = TimetableSerializer(timetable)
+            serializer = TimetableSerializer(timetable)
             return Response({
                 "message": "Timetable optimization completed and saved",
                 # "timetable": serializer.data
@@ -340,7 +340,6 @@ def get_teacher_single_day_timetable(request, day_of_week):
 @permission_classes([IsAuthenticated])
 def get_teacher_week_timetable(request):
     user = request.user
-    print("hi")
 
     timetable = get_object_or_404(Timetable, school=user, is_default=True)
     
