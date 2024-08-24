@@ -1,6 +1,6 @@
 
 from ..time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson
-from ..models import ElectiveGroup,Classroom,Standard,Teacher,Subject,Grade,ClassSubject,ClassSubjectSubject
+from ..models import ElectiveGroup,Classroom,Standard,Teacher,Subject,Grade,ClassSubject,ClassSubjectSubject,Room
 from collections import defaultdict
 import uuid
 from ..optapy_solver.domain import Timeslot,Lesson,ClassSection,StandardLevelManager,TutorManager,CourseManager,ClassroomAssignmentManager,ClassSectionManager,ElectiveGrpManager
@@ -72,6 +72,7 @@ def get_all_elective_group_of_user(user):
             "total_students": 0,
             "class_rooms": [],
             "available_teachers": set(),
+            
            
         })
 
@@ -108,6 +109,7 @@ def get_all_elective_group_of_user(user):
             "subjectDistributionData": dict(subject_distribution),
             "lessons_per_week":lessons_per_week,
             "elective_subject_name":elective_subject_name,
+            "prefered_rooms_for_overflow":group.preferred_rooms.all()
         })
     return(result)
 
@@ -129,7 +131,8 @@ def create_elective_lesson_data(input_data):
         grp_id = group['grp_id']
         elective_subject_name = group['elective_subject_name']
         lessons_per_week = group['lessons_per_week']
-        
+        prefered_rooms_for_overflow = group['prefered_rooms_for_overflow'].values_list('id', flat=True)
+
         # Extract unique classroom IDs
         unique_classroom_ids = set()
 
@@ -154,6 +157,17 @@ def create_elective_lesson_data(input_data):
             distributed_students = distribute_students(subject_data)
             for room_data in distributed_students:
                 suitable_room=find_suitable_room(room_data['students'],available_room_stack)
+                available_rooms_ids=[]
+                if suitable_room is None:
+
+                    if not prefered_rooms_for_overflow:  # Check if the list is empty or None
+                        raise ValueError("No preferred rooms for overflow available or list is empty.")
+                    available_rooms_ids = list(prefered_rooms_for_overflow)
+   
+                else:
+                    available_rooms_ids.append(suitable_room.id)
+                    
+                    
                 lesson_data = {
                     'subject_id': subject_id,
                     'available_teachers_ids': subject_data['available_teachers'],
@@ -163,7 +177,7 @@ def create_elective_lesson_data(input_data):
                                               for student in room_data['students']},
                     'lessons_per_week': lessons_per_week,
                     'elective_subject_name': elective_subject_name,
-                    'room':suitable_room
+                    'available_rooms_ids':available_rooms_ids
                 }
                 result.append(lesson_data)
     
@@ -211,12 +225,16 @@ def create_elective_lesson_ojbects(data, school):
         subject_from_db = Subject.objects.get(id=subject_id, school=school)
         subject = CourseManager.get_or_create(id=subject_id, name=subject_from_db.name)
         room=None
-        if  item['room']:
-            room = ClassroomAssignmentManager.get_or_create(id=item['room'].id,name=item['room'].name,capacity=item['room'].capacity,room_type=item['room'].room_type,occupied=item['room'].occupied)
+       
         available_teachers = []
         for teacher in Teacher.objects.filter(id__in=item['available_teachers_ids'], school=school):
             teacher_obj=TutorManager.get_or_create(id=teacher.id,name=teacher.name)
             available_teachers.append(teacher_obj)
+        available_rooms = []
+        print(item['available_rooms_ids'])
+        for room in Room.objects.filter(id__in=item['available_rooms_ids'], school=school):
+            roomr_obj=ClassroomAssignmentManager.get_or_create(id=room.id,name=room.name,capacity=room.capacity,room_type=room.room_type,occupied=room.occupied)
+            available_rooms.append(roomr_obj)
 
         class_sections = []
         for section_id in item['class_section_ids']:
@@ -247,7 +265,7 @@ def create_elective_lesson_ojbects(data, school):
                 available_teachers=available_teachers,
                 class_sections=class_sections,
                 lesson_no=lesson_no,
-                room=room,
+                available_rooms=available_rooms,
                 elective=elective,
                 elective_subject_name=elective_subject_name,
                 is_elective=True,
@@ -283,14 +301,21 @@ def create_core_lesson_ojbects(school):
                         subject_obj=CourseManager.get_or_create(id=subject.id,name=subject.name)
                         class_subject_subject = ClassSubjectSubject.objects.get(class_subject=class_subject, subject=subject)
                         available_teachers=[TutorManager.get_or_create(id=teacher.id,name=teacher.name) for teacher in class_subject_subject.assigned_teachers.all()]
-                        
+                        available_rooms = []
+                        for room in class_subject_subject.preferred_rooms.all():
+                            roomr_obj=ClassroomAssignmentManager.get_or_create(id=room.id,name=room.name,capacity=room.capacity,room_type=room.room_type,occupied=room.occupied)
+                            
+                            available_rooms.append(roomr_obj) 
+                            
+                        if len(available_rooms)==0:
+                            available_rooms.append(room_obj)
                         for lesson_no in range(1,class_subject.lessons_per_week+1):
                             lesson = Lesson(
                                 id=str(uuid.uuid4()),
                                 subject=subject_obj,
                                 available_teachers=available_teachers,
                                 class_sections=[classroom_obj],
-                                room=room_obj,
+                                available_rooms=available_rooms,
                                 lesson_no=lesson_no,
                                 elective_subject_name=class_subject.name
 

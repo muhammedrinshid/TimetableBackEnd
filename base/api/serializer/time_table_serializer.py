@@ -40,7 +40,7 @@ class ClassDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = LessonClassSection
         fields = ['standard', 'division', 'number_of_students']
-class SessionSerializer(serializers.ModelSerializer):
+class TeacherSessionSerializer(serializers.ModelSerializer):
     subject = serializers.CharField(source='course.name')
     type = serializers.SerializerMethodField()
     elective_subject_name = serializers.CharField()
@@ -72,10 +72,10 @@ class InstructorSerializer(serializers.ModelSerializer):
 
 class TeacherDayTimetableSerializer(serializers.Serializer):
     instructor = InstructorSerializer()
-    sessions = SessionSerializer(many=True)
+    sessions = TeacherSessionSerializer(many=True)
 
 
-class TeacherWeekTimetableSerializer(serializers.Serializer):
+class WholeTeacherWeekTimetableSerializer(serializers.Serializer):
     MON = TeacherDayTimetableSerializer(many=True, required=False)
     TUE = TeacherDayTimetableSerializer(many=True, required=False)
     WED = TeacherDayTimetableSerializer(many=True, required=False)
@@ -115,14 +115,13 @@ class ClassroomSerializer(serializers.ModelSerializer):
 class ClassSectionSerializer(serializers.ModelSerializer):
     standard = serializers.CharField(source='classroom.standard.short_name')
     room = RoomSerializer(source='classroom.room')
-    total_students = serializers.SerializerMethodField()
+    total_students = serializers.CharField(source='classroom.number_of_students')
 
     class Meta:
         model = ClassSection
         fields = ['standard', 'division', 'room', 'total_students']
 
-    def get_total_students(self, obj):
-        return sum(lcs.number_of_students for lcs in obj.lessonclasssection_set.all())
+   
 class ClassDistributionSerializer(serializers.ModelSerializer):
     subject = serializers.CharField(source='lesson.course.name')
     teacher = serializers.SerializerMethodField()
@@ -147,7 +146,7 @@ class ClassDistributionSerializer(serializers.ModelSerializer):
             'number': room.room_number,
             'type': room.get_room_type_display(),
         }
-class SessionSerializer(serializers.Serializer):
+class StudentSessionSerializer(serializers.Serializer):
     name = serializers.SerializerMethodField()
     type = serializers.SerializerMethodField()
     class_distribution = serializers.SerializerMethodField()
@@ -169,7 +168,12 @@ class SessionSerializer(serializers.Serializer):
         
         distribution = []
         for lesson in obj:
-            for lcs in lesson.lessonclasssection_set.all():
+            # Assuming we have access to the current class_section
+            # You might need to pass this information to the serializer
+            current_class_section = self.context.get('class_section')
+            
+            try:
+                lcs = LessonClassSection.objects.get(lesson=lesson, class_section=current_class_section)
                 distribution.append({
                     'subject': lesson.course.name,
                     'teacher': {
@@ -183,10 +187,17 @@ class SessionSerializer(serializers.Serializer):
                         'type': lesson.classroom_assignment.room.get_room_type_display(),
                     }
                 })
+            except LessonClassSection.DoesNotExist:
+                # Handle the case where there's no matching LessonClassSection
+                pass
+
         return distribution
 class StudentDayTimetableSerializer(serializers.Serializer):
     classroom = ClassSectionSerializer()
-    sessions = SessionSerializer(many=True)
+    sessions = serializers.SerializerMethodField()
+
+    def get_sessions(self, obj):
+        return StudentSessionSerializer(obj['sessions'], many=True, context={'class_section': obj['classroom']}).data
 class StudentWeekTimetableSerializer(serializers.Serializer):
     def __init__(self, *args, **kwargs):
         working_days = kwargs.pop('working_days', [])
@@ -195,6 +206,21 @@ class StudentWeekTimetableSerializer(serializers.Serializer):
         for day in working_days:
             self.fields[day] = StudentDayTimetableSerializer(many=True)
 
+
+
+
+class ClassroomWeekTimetableSerializer(serializers.Serializer):
+    day = serializers.CharField()
+    sessions = StudentSessionSerializer(many=True)
+
+    def get_sessions(self, obj):
+        return StudentSessionSerializer(obj['sessions'], many=True, context={'class_section': self.context['class_section']}).data
+
+class TeacherWeekTimetableSerializer(serializers.Serializer):
+    day = serializers.CharField()
+    sessions = TeacherSessionSerializer(many=True)
+
+    
 
 
 

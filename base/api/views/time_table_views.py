@@ -13,7 +13,7 @@ from collections import defaultdict
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from ...models import  Teacher, Subject, Room,Classroom,Standard
-from ..serializer.time_table_serializer import TeacherDayTimetableSerializer,StudentWeekTimetableSerializer,StudentDayTimetableSerializer,TeacherWeekTimetableSerializer
+from ..serializer.time_table_serializer import TeacherDayTimetableSerializer,StudentWeekTimetableSerializer,StudentDayTimetableSerializer,WholeTeacherWeekTimetableSerializer,TeacherWeekTimetableSerializer,ClassroomWeekTimetableSerializer
 from django.shortcuts import get_object_or_404
 
 
@@ -68,7 +68,7 @@ def save_optimization_results(user, solution):
                 )
 
                 # Process ClassroomAssignment
-                room = lesson.get_room()
+                room = lesson.get_alotted_room()
                 if room:
                     room=Room.objects.get(id=room.id)
                     classroom_assignment, _ = ClassroomAssignment.objects.get_or_create(
@@ -162,7 +162,7 @@ def save_optimization_results(user, solution):
 def run_module_view(request):
     # Run the optimization process
     optimization_result = run_optimization(request=request)
-    print(optimization_result)
+    # print(optimization_result)
     # Access the score
     score = optimization_result.get_score()  # or use optimization_result.score
 
@@ -339,7 +339,7 @@ def get_teacher_single_day_timetable(request, day_of_week):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_teacher_week_timetable(request):
+def get_whole_teacher_week_timetable(request):
     user = request.user
 
     timetable = get_object_or_404(Timetable, school=user, is_default=True)
@@ -353,7 +353,7 @@ def get_teacher_week_timetable(request):
         day_timetable = get_teacher_day_timetable(user, timetable, day_name)
         week_timetable[day_code] = day_timetable
     
-    serializer = TeacherWeekTimetableSerializer(week_timetable, working_days=working_days)
+    serializer = WholeTeacherWeekTimetableSerializer(week_timetable, working_days=working_days)
     return Response(serializer.data)
 
 
@@ -393,6 +393,9 @@ def get_student_day_timetable(user, timetable, day_of_week):
             ),
             to_attr='day_lessons'
         )
+    ).order_by(
+        'classroom__standard__short_name', 
+        'division'
     )
 
     day_timetable = []
@@ -437,3 +440,112 @@ def get_student_week_timetable(request):
     
     serializer = StudentWeekTimetableSerializer(week_timetable, working_days=working_days)
     return Response(serializer.data)
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_classroom_week_timetable(request,pk):
+    user = request.user
+    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+
+    if pk is not None:
+        try:
+            classroom=Classroom.objects.get(id=pk,school=user)
+            classsection=ClassSection.objects.get(classroom=classroom,timetable=timetable)
+            
+        except Classroom.DoesNotExist:
+            return Response({'error': 'No classroom found for this school.'}, status=status.HTTP_404_NOT_FOUND)
+    
+
+
+    working_days = user.working_days
+
+    day_timetable = []
+    
+    
+    
+    
+    for day_code in working_days:
+        day_lessons = Lesson.objects.filter(
+            timetable=timetable,
+            timeslot__day_of_week=day_code,
+            class_sections__in=[classsection]
+        ).select_related(
+            'course', 'alotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
+        
+    )
+        
+        sessions = defaultdict(list)
+        for lesson in day_lessons:
+            sessions[lesson.timeslot.period - 1].append(lesson)
+
+        formatted_sessions = [sessions[i] for i in range(timetable.number_of_lessons)]
+
+            
+        
+
+        day_timetable.append({
+            'day': day_code,
+            'sessions': formatted_sessions
+        })
+    serializer = ClassroomWeekTimetableSerializer(day_timetable,many=True,context={'class_section': classsection})
+    return Response(serializer.data)
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_teacher_week_timetable(request,pk):
+    # Get all teachers for the school
+    user = request.user
+    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+
+    if pk is not None:
+        try:
+            teacher=Teacher.objects.get(id=pk,school=user)
+            tutor=Tutor.objects.get(teacher=teacher,timetable=timetable)
+            
+        except Classroom.DoesNotExist:
+            return Response({'error': 'No classroom found for this school.'}, status=status.HTTP_404_NOT_FOUND)
+    
+
+
+    working_days = user.working_days
+
+    day_timetable = []
+    
+    
+    for day_code in working_days:
+        # Check if there's a Tutor object for this teacher and timetable
+        
+        # Initialize sessions with None for each period
+        sessions = [None] * timetable.number_of_lessons
+        
+        # Get all lessons for this tutor on the specified day
+        lessons = Lesson.objects.filter(
+            timetable=timetable,
+            alotted_teacher=tutor,
+            timeslot__day_of_week=day_code
+        ).order_by('timeslot__period')
+        # Fill in the sessions with actual lesson data
+        for lesson in lessons:
+            sessions[lesson.timeslot.period - 1] = lesson
+        
+        # Remove any remaining None values
+        # sessions = [s for s in sessions if s is not None]
+        if sessions:  # Only add to day_timetable if there are sessions
+            day_timetable.append({
+                'day': day_code,
+                'sessions': sessions
+            })
+    
+    serializer = TeacherWeekTimetableSerializer(day_timetable,many=True)
+    return Response(serializer.data)
+
+
+
+
+
+

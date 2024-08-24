@@ -12,7 +12,7 @@ from .constraints import define_constraints
 def print_timetable(solution):
     for lesson in solution.get_lesson_list():
         print(f"Lesson: {lesson.subject}, Teacher: {lesson.alotted_teacher.name}, "
-              f"Room: {lesson.get_room().name if lesson.get_room() else 'Not assigned'}, "
+              f"Room: {lesson.get_alotted_room().name if lesson.get_alotted_room() else 'Not assigned'}, "
               f"Timeslot: {lesson.get_timeslot().day_of_week} - Period {lesson.get_timeslot().period}"
               f"Timeslot: {lesson.class_sections}"
               )
@@ -53,7 +53,7 @@ def create_problem_from_django_models(user):
     attributes = vars(debug)
     for attr_name, attr_value in attributes.items():
        print(f"Name: {attr_name}, Value: {attr_value}, Type: {type(attr_value).__name__}")
-    return TimeTable(timeslot_list=timeslots, room_list=rooms, lesson_list=lessons )
+    return TimeTable(timeslot_list=timeslots, lesson_list=lessons )
 
 
 

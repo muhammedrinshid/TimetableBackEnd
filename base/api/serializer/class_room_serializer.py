@@ -65,6 +65,7 @@ class ClassroomSerializer(serializers.ModelSerializer):
 class SubjectTeacherSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     qualifiedTeachers = serializers.ListField(child=serializers.UUIDField())
+    preferedRooms = serializers.ListField(child=serializers.UUIDField(), required=False)  # Add this line
 
 class ClassSubjectSerializer(serializers.ModelSerializer):
     school = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
@@ -97,6 +98,12 @@ class ClassSubjectSerializer(serializers.ModelSerializer):
                 for teacher_id in subject_data['qualifiedTeachers']:
                     teacher = Teacher.objects.get(id=teacher_id)
                     class_subject_subject.assigned_teachers.add(teacher)
+                    
+                
+                if 'preferedRooms' in subject_data:  # Check if the key exists
+                    for room_id in subject_data['preferedRooms']:
+                        room = Room.objects.get(id=room_id)
+                        class_subject_subject.preferred_rooms.add(room)
 
         return class_subject
 
@@ -107,7 +114,11 @@ class ElectiveGroupDetailSerializer(serializers.ModelSerializer):
         model = ElectiveGroup
         fields = ['id', 'name']
 
-
+class RoomSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Room
+        fields = ['id', 'name', 'room_number', 'capacity', 'occupied', 'room_type', 'school']
+        read_only_fields = ['id', 'school']
 
 
 class TeacherDetailSerializer(serializers.ModelSerializer):
@@ -129,10 +140,11 @@ class SubjectDetailSerializer(serializers.ModelSerializer):
 class ClassSubjectSubjectDetailSerializer(serializers.ModelSerializer):
     subject = SubjectDetailSerializer()
     alotted_teachers = TeacherDetailSerializer(source='assigned_teachers', many=True)
+    preferred_rooms = RoomSerializer( many=True,)
 
     class Meta:
         model = ClassSubjectSubject
-        fields = ['subject', 'number_of_students', 'alotted_teachers']
+        fields = ['subject', 'number_of_students', 'alotted_teachers','preferred_rooms']
 
 
 
@@ -140,11 +152,12 @@ class ClassSubjectDetailSerializer(serializers.ModelSerializer):
     options = ClassSubjectSubjectDetailSerializer(source='class_subject_subjects', many=True)
     elective_group = ElectiveGroupDetailSerializer(read_only=True)
     teacher = TeacherDetailSerializer(source='class_subject_subjects.first.assigned_teachers', many=True, read_only=True)
+    special_rooms = RoomSerializer(source='class_subject_subjects.first.preferred_rooms', many=True, read_only=True)
     is_elective = serializers.BooleanField(source='elective_or_core')
 
     class Meta:
         model = ClassSubject
-        fields = ['id', 'name', 'lessons_per_week', 'is_elective', 'elective_group', 'options', 'teacher']
+        fields = ['id', 'name', 'lessons_per_week', 'is_elective', 'elective_group', 'options', 'teacher','special_rooms']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -156,11 +169,7 @@ class ClassSubjectDetailSerializer(serializers.ModelSerializer):
             data.pop('teacher', None)
         return data
     
-class RoomSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Room
-        fields = ['id', 'name', 'room_number', 'capacity', 'occupied', 'room_type', 'school']
-        read_only_fields = ['id', 'school']
+
 class ClassroomDetailSerializer(serializers.ModelSerializer):
     standard_name = serializers.CharField(source='standard.name')
     standard_short_name = serializers.CharField(source='standard.short_name')
@@ -290,6 +299,7 @@ class ClassSubjectOptionSerializer(serializers.Serializer):
     subject = serializers.PrimaryKeyRelatedField(queryset=Subject.objects.all())
     number_of_students = serializers.IntegerField()
     assigned_teachers = serializers.PrimaryKeyRelatedField(many=True, queryset=Teacher.objects.all())
+    preferred_rooms = serializers.PrimaryKeyRelatedField(many=True, queryset=Room.objects.all())
 
     
 
@@ -322,12 +332,15 @@ class ClassSubjectUpdateSerializer(serializers.ModelSerializer):
             subjects_data = validated_data.pop('subjects', [])
             for subject_data in subjects_data:
                 try:
-                    ClassSubjectSubject.objects.create(
-                        school=instance.school,
-                        class_subject=instance,
-                        subject=subject_data['subject'],
-                        number_of_students=subject_data['number_of_students']
-                    ).assigned_teachers.set(subject_data['assigned_teachers'])
+                    class_subject_subject =  ClassSubjectSubject.objects.create(
+                            school=instance.school,
+                            class_subject=instance,
+                            subject=subject_data['subject'],
+                            number_of_students=subject_data['number_of_students']
+                        )
+                    class_subject_subject.assigned_teachers.set(subject_data['assigned_teachers'])
+
+                    class_subject_subject.preferred_rooms.set(subject_data['preferred_rooms'])
                 except KeyError as e:
                     raise serializers.ValidationError(f"Missing required field: {str(e)}")
 

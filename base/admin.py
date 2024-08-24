@@ -56,7 +56,7 @@ class CustomUserAdminForm(forms.ModelForm):
 class CustomUserAdmin(UserAdmin):
     form = CustomUserAdminForm
     model = User
-    list_display = ('email', 'school_name', 'school_id', 'is_staff', 'is_active',)
+    list_display = ('email', 'school_name', 'school_id', 'is_staff', 'is_active','is_ready_for_timetable')
     list_filter = ('email', 'school_name', 'is_staff', 'is_active',)
     readonly_fields = ('all_classes_subject_assigned_atleast_one_teacher', 'all_classes_assigned_subjects')
     

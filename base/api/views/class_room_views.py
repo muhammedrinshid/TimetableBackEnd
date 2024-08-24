@@ -329,7 +329,7 @@ def assign_subjects_to_all_classrooms(request, pk):
     
         if request.method == 'POST':
             created_subjects = []
-            
+            print(request.data.get('selectedSubjects'))
             # Wrap the entire creation process in a transaction
             with transaction.atomic():
                 for classroom in classrooms:

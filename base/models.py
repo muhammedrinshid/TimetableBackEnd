@@ -117,11 +117,17 @@ class User(AbstractUser):
             class_subject.elective_group_added_correctly 
             for class_subject in class_subjects
         )
+        
+    @property
+    def all_classrooms_have_rooms(self):
+        return not self.classrooms.filter(room__isnull=True).exists()
     @property
     def is_ready_for_timetable(self):
         return (self.all_classes_subject_assigned_atleast_one_teacher and 
                 self.all_classes_assigned_subjects and 
-                self.all_class_subjects_have_correct_elective_groups)
+                self.all_class_subjects_have_correct_elective_groups and
+                self.all_classrooms_have_rooms
+                ) 
 
 
     # Role field (for future use)
@@ -289,6 +295,8 @@ class Room(models.Model):
         choices=ROOM_TYPES,
         default='CLASSROOM',
     )
+    def __str__(self):
+        return self.name
 
 class Standard(models.Model):
     """
@@ -397,6 +405,7 @@ class Classroom(models.Model):
     @property
     def total_subjects(self):
         return self.class_subjects.count()
+   
 
     def __str__(self):
         return f'{self.standard} {self.name}'

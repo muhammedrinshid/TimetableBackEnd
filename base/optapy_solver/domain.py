@@ -269,32 +269,35 @@ class Lesson:
     def get_alotted_room(self):
         return self.alotted_room
 
-    def set_room(self, new_room):
+    def set_alotted_room(self, new_room):
         self.alotted_room = new_room
 
    
     
     @planning_variable(Tutor, value_range_provider_refs=['teacherRange'])
-    def get_allotted_teacher(self):
+    def get_alotted_teacher(self):
         return self.alotted_teacher
 
-    def set_allotted_teacher(self, teacher):
+    def set_alotted_teacher(self, teacher):
         self.alotted_teacher = teacher
 
     @problem_fact_collection_property(Tutor)
     @value_range_provider('teacherRange')
     def get_teacher_range(self):
         return self.available_teachers
+    
+    
+    
     @problem_fact_collection_property(ClassroomAssignment)
     @value_range_provider('roomRange')
-    def get_teacher_range(self):
+    def get_room_range(self):
         return self.available_rooms
 
     def __str__(self):
         return (
             f"Lesson("
             f"timeslot={self.timeslot}, "
-            f"room={self.room}, "
+            f"room={self.alotted_room}, "
             f"teacher={self.alotted_teacher}, "
             f"subject={self.subject}, "
             f"number={self.lesson_no}, "
@@ -308,9 +311,9 @@ def format_list(a_list):
 
 @planning_solution
 class TimeTable:
-    def __init__(self, timeslot_list, room_list ,score=None):
+    def __init__(self, timeslot_list, lesson_list ,score=None):
         self.timeslot_list = timeslot_list
-        self.room_list = room_list
+        self.lesson_list = lesson_list
         self.score = score
         
         
@@ -343,7 +346,6 @@ class TimeTable:
         return (
             f"TimeTable("
             f"timeslot_list={format_list(self.timeslot_list)},\n"
-            f"room_list={format_list(self.room_list)},\n"
             f"lesson_list={format_list(self.lesson_list)},\n"
             f"score={str(self.score.toString()) if self.score is not None else 'None'}"
             f")"
