@@ -333,7 +333,14 @@ def get_teacher_single_day_timetable(request, day_of_week):
     day_timetable = get_teacher_day_timetable(user, timetable, day_of_week)
     
     serializer = TeacherDayTimetableSerializer(day_timetable, many=True)
-    return Response(serializer.data)
+    serialized_data = serializer.data  # Access serialized data
+
+    # Modify serialized data
+    for data in serialized_data:
+        if "instructor" in data:
+            data["instructor"]["present"] = [True] * user.teaching_slots
+
+    return Response(serialized_data)
 
 
 

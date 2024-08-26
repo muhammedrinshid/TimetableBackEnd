@@ -3,6 +3,7 @@ from ...time_table_models import Timetable
 from rest_framework import serializers
 from ...models import  Teacher, Room, Subject, Classroom
 from ...time_table_models import Timetable,  Lesson,LessonClassSection,Tutor,ClassSection
+from .user_serializer import SubjectSerializer
 class TimetableSerializer(serializers.ModelSerializer):
     class Meta:
         model = Timetable
@@ -65,10 +66,10 @@ class InstructorSerializer(serializers.ModelSerializer):
     profile_image = serializers.CharField(source='teacher.profile_image')
     surname = serializers.CharField(source='teacher.surname')
     teacher_id = serializers.CharField(source='teacher.teacher_id')
-
+    qualified_subjects=SubjectSerializer(source='teacher.qualified_subjects', many=True, read_only=True,)
     class Meta:
         model = Tutor
-        fields = ['name', 'profile_image', 'surname', 'teacher_id']
+        fields = ['name', 'profile_image', 'surname', 'teacher_id','qualified_subjects']
 
 class TeacherDayTimetableSerializer(serializers.Serializer):
     instructor = InstructorSerializer()
