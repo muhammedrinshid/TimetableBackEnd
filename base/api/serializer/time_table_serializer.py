@@ -117,10 +117,10 @@ class ClassSectionSerializer(serializers.ModelSerializer):
     standard = serializers.CharField(source='classroom.standard.short_name')
     room = RoomSerializer(source='classroom.room')
     total_students = serializers.CharField(source='classroom.number_of_students')
-
+    class_id=serializers.CharField(source='classroom.class_id')
     class Meta:
         model = ClassSection
-        fields = ['standard', 'division', 'room', 'total_students']
+        fields = ['standard', 'division', 'room', 'total_students','class_id']
 
    
 class ClassDistributionSerializer(serializers.ModelSerializer):

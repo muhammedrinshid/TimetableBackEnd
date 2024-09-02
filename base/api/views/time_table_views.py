@@ -202,7 +202,8 @@ def check_class_subjects(request):
     results = {
         "all_class_subjects_have_correct_elective_groups": user.all_class_subjects_have_correct_elective_groups,
         "all_classes_assigned_subjects": user.all_classes_assigned_subjects,
-        "all_classes_subject_assigned_atleast_one_teacher": user.all_classes_subject_assigned_atleast_one_teacher
+        "all_classes_subject_assigned_atleast_one_teacher": user.all_classes_subject_assigned_atleast_one_teacher,
+        "all_classrooms_have_rooms": user.all_classrooms_have_rooms,
     }
 
     reasons = []
@@ -215,6 +216,8 @@ def check_class_subjects(request):
     
     if not user.all_classes_subject_assigned_atleast_one_teacher:
         reasons.append("Not all class subjects have at least one assigned teacher.")
+    if not user.all_classrooms_have_rooms:
+        reasons.append("Not all classroom has specific room")
 
     response_data = {
         "results": results,
@@ -463,9 +466,9 @@ def get_classroom_week_timetable(request,pk):
             
         except Classroom.DoesNotExist:
             return Response({'error': 'No classroom found for this school.'}, status=status.HTTP_404_NOT_FOUND)
-    
-
-
+        except  ClassSection.DoesNotExist:
+            
+            return Response({'error': 'No classroom found for this school.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
     working_days = user.working_days
 
     day_timetable = []
@@ -514,9 +517,11 @@ def get_teacher_week_timetable(request,pk):
             teacher=Teacher.objects.get(id=pk,school=user)
             tutor=Tutor.objects.get(teacher=teacher,timetable=timetable)
             
-        except Classroom.DoesNotExist:
-            return Response({'error': 'No classroom found for this school.'}, status=status.HTTP_404_NOT_FOUND)
-    
+        except Teacher.DoesNotExist:
+            return Response({'error': 'Teacher not found for this school.'}, status=status.HTTP_404_NOT_FOUND)
+        except Tutor.DoesNotExist:
+             return Response({'error': 'No timetable available for this teacher.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        
 
 
     working_days = user.working_days

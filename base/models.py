@@ -230,7 +230,7 @@ class Teacher(models.Model):
     school = models.ForeignKey(User, related_name='teachers', on_delete=models.CASCADE)
     name = models.CharField(max_length=100, blank=False, null=False)
     surname = models.CharField(max_length=100, blank=True, null=True)
-    email = models.EmailField(unique=False)
+    email = models.EmailField(unique=False,blank=True,null=True)
     phone = models.CharField(max_length=20, blank=True, null=True)
     qualified_subjects = models.ManyToManyField('Subject', related_name='qualified_teachers')
     grades = models.ManyToManyField('Grade', related_name='teachers')

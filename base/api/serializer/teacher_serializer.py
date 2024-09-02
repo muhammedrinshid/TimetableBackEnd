@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from ...models import Teacher, Subject, Grade
 from .user_serializer import SubjectSerializer,GradeSerializer
+
+
 class TeacherSerializer(serializers.ModelSerializer):
     qualified_subjects = serializers.ListField(child=serializers.CharField(), write_only=True)
     grades = serializers.ListField(child=serializers.UUIDField(), write_only=True)
@@ -30,6 +32,7 @@ class TeacherSerializer(serializers.ModelSerializer):
         return teacher
 
     def update(self, instance, validated_data):
+        
         qualified_subjects = validated_data.pop('qualified_subjects', None)
         grades = validated_data.pop('grades', None)
         
@@ -37,7 +40,7 @@ class TeacherSerializer(serializers.ModelSerializer):
         
         if qualified_subjects is not None:
             instance.qualified_subjects.clear()
-            school = self.context['request'].user.school
+            school = self.context['request'].user
             for subject_name in qualified_subjects:
                 subject, _ = Subject.objects.get_or_create(name=subject_name, school=school)
                 instance.qualified_subjects.add(subject)

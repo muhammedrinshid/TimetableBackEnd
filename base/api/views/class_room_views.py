@@ -560,6 +560,7 @@ def update_class_subject(request, pk):
             serializer.save()
             return Response(serializer.data)
         except serializers.ValidationError as e:
+            print(str(e))
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from ...models import Teacher
 from ..serializer.teacher_serializer import TeacherSerializer
 from django.db.models import Count
+from django.shortcuts import get_object_or_404
 
 @api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
@@ -32,8 +33,9 @@ def teacher(request,pk=None):
             teacher = Teacher.objects.get(id=pk, school=request.user)
         except Teacher.DoesNotExist:
             return Response({'error': 'Teacher not found'}, status=status.HTTP_404_NOT_FOUND)
+        print(request.data)
 
-        serializer = TeacherSerializer(teacher, data=request.data, partial=True)
+        serializer = TeacherSerializer(teacher, data=request.data, partial=True,context={'request': request})
         if serializer.is_valid():
             teacher = serializer.save()
             if 'profile_image' in request.FILES:
@@ -53,7 +55,22 @@ def teacher(request,pk=None):
 
     return Response({'error': 'Method not allowed'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_teacher_image(request, pk):
+    teacher = get_object_or_404(Teacher, pk=pk)
+    
+    # Check if the authenticated user has permission to update this teacher
+    # You might want to add more specific permission checks here
+    
+    if 'profile_image' not in request.FILES:
+        return Response({'error': 'No image file provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    teacher.profile_image = request.FILES['profile_image']
+    teacher.save()
+    
+    serializer = TeacherSerializer(teacher)
+    return Response(serializer.data)
 
 
 @api_view(['GET'])
