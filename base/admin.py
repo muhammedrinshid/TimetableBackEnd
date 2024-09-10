@@ -174,9 +174,9 @@ class TimeslotAdmin(admin.ModelAdmin):
     search_fields = ('day_of_week', 'period', 'timetable__name', 'school__username')
 
 class LessonAdmin(admin.ModelAdmin):
-    list_display = ('course', 'alotted_teacher', 'timeslot', 'timetable', 'school','elective_subject_name')
+    list_display = ('course', 'allotted_teacher', 'timeslot', 'timetable', 'school','elective_subject_name')
     list_filter = ('timetable', 'school', 'course')
-    search_fields = ('course__name', 'alotted_teacher__name', 'timeslot__day_of_week', 'timetable__name', 'school__username')
+    search_fields = ('course__name', 'allotted_teacher__name', 'timeslot__day_of_week', 'timetable__name', 'school__username')
 
     # Display class sections as a list
     def get_class_sections(self, obj):

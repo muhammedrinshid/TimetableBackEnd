@@ -66,7 +66,6 @@ def school_rooms(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def check_room_number_availability(request,room_number=None):
-    print(room_number)
     
     
     if not room_number:

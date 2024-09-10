@@ -59,16 +59,16 @@ def save_optimization_results(user, solution):
                 )
 
                 # Process Tutor
-                teacher=Teacher.objects.get(id=lesson.alotted_teacher.id)
+                teacher=Teacher.objects.get(id=lesson.allotted_teacher.id)
                 tutor, _ = Tutor.objects.get_or_create(
                     teacher=teacher,
                     timetable=timetable,
                     school=user,
-                    defaults={'name': lesson.alotted_teacher.name}
+                    defaults={'name': lesson.allotted_teacher.name}
                 )
 
                 # Process ClassroomAssignment
-                room = lesson.get_alotted_room()
+                room = lesson.get_allotted_room()
                 if room:
                     room=Room.objects.get(id=room.id)
                     classroom_assignment, _ = ClassroomAssignment.objects.get_or_create(
@@ -102,7 +102,7 @@ def save_optimization_results(user, solution):
                     timetable=timetable,
                     school=user,
                     course=course,
-                    alotted_teacher=tutor,
+                    allotted_teacher=tutor,
                     classroom_assignment=classroom_assignment,
                     timeslot=timeslot_obj,
                     elective_subject_name=lesson.elective_subject_name,
@@ -311,7 +311,7 @@ def get_teacher_day_timetable(user, timetable, day_of_week):
             # Get all lessons for this tutor on the specified day
             lessons = Lesson.objects.filter(
                 timetable=timetable,
-                alotted_teacher=tutor,
+                allotted_teacher=tutor,
                 timeslot__day_of_week=day_of_week
             ).order_by('timeslot__period')
             # Fill in the sessions with actual lesson data
@@ -397,7 +397,7 @@ def get_student_day_timetable(user, timetable, day_of_week):
                 timetable=timetable,
                 timeslot__day_of_week=day_of_week
             ).select_related(
-                'course', 'alotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
+                'course', 'allotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
             ).prefetch_related(
                 'lessonclasssection_set'
             ),
@@ -482,7 +482,7 @@ def get_classroom_week_timetable(request,pk):
             timeslot__day_of_week=day_code,
             class_sections__in=[classsection]
         ).select_related(
-            'course', 'alotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
+            'course', 'allotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
         
     )
         
@@ -538,7 +538,7 @@ def get_teacher_week_timetable(request,pk):
         # Get all lessons for this tutor on the specified day
         lessons = Lesson.objects.filter(
             timetable=timetable,
-            alotted_teacher=tutor,
+            allotted_teacher=tutor,
             timeslot__day_of_week=day_code
         ).order_by('timeslot__period')
         # Fill in the sessions with actual lesson data

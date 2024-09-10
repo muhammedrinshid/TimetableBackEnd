@@ -134,7 +134,7 @@ class ClassDistributionSerializer(serializers.ModelSerializer):
         fields = ['subject', 'teacher', 'number_of_students_from_this_class', 'room']
 
     def get_teacher(self, obj):
-        teacher = obj.lesson.alotted_teacher.teacher
+        teacher = obj.lesson.allotted_teacher.teacher
         return {
             'name': f"{teacher.name} {teacher.surname}".strip(),
             'profile_image': teacher.profile_image.url if teacher.profile_image else None,
@@ -178,8 +178,8 @@ class StudentSessionSerializer(serializers.Serializer):
                 distribution.append({
                     'subject': lesson.course.name,
                     'teacher': {
-                        'name': f"{lesson.alotted_teacher.teacher.name} {lesson.alotted_teacher.teacher.surname}".strip(),
-                        'profile_image': lesson.alotted_teacher.teacher.profile_image.url if lesson.alotted_teacher.teacher.profile_image else None,
+                        'name': f"{lesson.allotted_teacher.teacher.name} {lesson.allotted_teacher.teacher.surname}".strip(),
+                        'profile_image': lesson.allotted_teacher.teacher.profile_image.url if lesson.allotted_teacher.teacher.profile_image else None,
                     },
                     'number_of_students_from_this_class': lcs.number_of_students,
                     'room': {

@@ -271,7 +271,6 @@ class Teacher(models.Model):
         
         
         
-        
 class Room(models.Model):
     ROOM_TYPES = [
         ('CLASSROOM', 'Classroom'),
@@ -286,7 +285,7 @@ class Room(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, null=True, blank=True)
-    room_number = models.CharField(max_length=20,unique=True)
+    room_number = models.CharField(max_length=20)
     school = models.ForeignKey(User, on_delete=models.CASCADE, null=True)
     capacity = models.PositiveIntegerField(null=True, blank=True)
     occupied = models.BooleanField(default=False)
@@ -295,6 +294,10 @@ class Room(models.Model):
         choices=ROOM_TYPES,
         default='CLASSROOM',
     )
+
+    class Meta:
+        unique_together = ['room_number', 'school']
+
     def __str__(self):
         return self.name
 
@@ -488,10 +491,6 @@ class ClassSubject(models.Model):
         super().save(*args, **kwargs)
 
     def clean(self):
-        # Validate total number of students in ClassSubjectSubject does not exceed number_of_students in Classroom
-        total_students = sum((child.number_of_students for child in self.class_subject_subjects.all()), 0)
-        if total_students > self.class_room.number_of_students:
-            raise ValidationError('Total number of students in ClassSubjectSubject exceeds the number_of_students in the classroom.')
         
         if self.elective_or_core and self.elective_group:
             # Check if there's already a class subject with the same elective group in this classroom

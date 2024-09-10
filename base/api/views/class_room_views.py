@@ -14,10 +14,11 @@ from ...models import Standard, Classroom, Grade,Subject,Teacher,ClassSubject,Cl
 from rest_framework.decorators import api_view,permission_classes
 from ..serializer.class_room_serializer import StandardSerializer,ElectiveSubjectAddSerializer,ClassSubjectUpdateSerializer,RoomSerializer,ElectiveGroupGetSerializer,ElectiveGroupCreateSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch,Sum,Count
 from django.db import DatabaseError
 from django.core.exceptions import ObjectDoesNotExist
 from django.shortcuts import get_object_or_404
+from collections import defaultdict
 logger = logging.getLogger(__name__)
 from uuid import UUID
 
@@ -329,7 +330,6 @@ def assign_subjects_to_all_classrooms(request, pk):
     
         if request.method == 'POST':
             created_subjects = []
-            print(request.data.get('selectedSubjects'))
             # Wrap the entire creation process in a transaction
             with transaction.atomic():
                 for classroom in classrooms:
@@ -547,30 +547,86 @@ def classsubject_instance_manager(request, pk):
 
 
 @api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+
 def update_class_subject(request, pk):
 
     try:
         class_subject = ClassSubject.objects.get(pk=pk)
     except ClassSubject.DoesNotExist:
         return Response({"error": "ClassSubject not found"}, status=status.HTTP_404_NOT_FOUND)
-    print(request.data)
     serializer = ClassSubjectUpdateSerializer(class_subject, data=request.data, partial=True)
     if serializer.is_valid():
         try:
             serializer.save()
             return Response(serializer.data)
         except serializers.ValidationError as e:
-            print(str(e))
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_grade_subjects(request):
+    user = request.user
 
-    
+    # Use defaultdict to automatically create new grades
+    grade_data = defaultdict(lambda: {
+        'short_name': '',
+        'subjects_with_total_in_week': []
+    })
 
+    # Fetch all subjects for the user's school
+    subjects = Subject.objects.filter(school=user).prefetch_related(
+        'class_subjects__class_room__standard__grade'
+    )
 
+    for subject in subjects:
+        for class_subject in subject.class_subjects.all():
+            grade = class_subject.class_room.standard.grade
+            
+            if not grade_data[grade.id]['short_name']:
+                grade_data[grade.id]['short_name'] = grade.short_name
 
+            # Find if subject already exists in this grade's data
+            subject_data = next(
+                (item for item in grade_data[grade.id]['subjects_with_total_in_week'] if item['id'] == str(subject.id)),
+                None
+            )
 
+            if subject_data:
+                subject_data['total_lessons'] += class_subject.lessons_per_week
+            else:
+                # Count available teachers
+                available_teachers = Teacher.objects.filter(
+                    school=user,
+                    qualified_subjects=subject,
+                    grades=grade
+                ).count()
 
+                # Count specific teachers
+                specific_teachers = Teacher.objects.filter(
+                school=user,
+                qualified_subjects=subject,
+                grades=grade
+            ).annotate(
+                total_subjects=Count('qualified_subjects', distinct=True),
+                total_grades=Count('grades', distinct=True)
+            ).filter(
+                total_subjects=1,
+                total_grades=1
+            ).count()
 
+                grade_data[grade.id]['subjects_with_total_in_week'].append({
+                    'name': subject.name,
+                    'id': str(subject.id),
+                    'total_lessons': class_subject.lessons_per_week,
+                    'available_teachers': available_teachers,
+                    'specific_teachers': specific_teachers
+                })
+
+    # Convert defaultdict to the desired list format
+    result = list(grade_data.values())
+
+    return Response(result)

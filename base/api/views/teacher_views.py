@@ -11,8 +11,7 @@ from django.shortcuts import get_object_or_404
 @permission_classes([IsAuthenticated])
 def teacher(request,pk=None):
     if request.method == 'POST':
-        print("POST data:", request.POST)
-        print("FILES:", request.FILES)
+        
         serializer = TeacherSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             teacher = serializer.save(school=request.user)

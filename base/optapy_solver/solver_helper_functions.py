@@ -228,10 +228,9 @@ def create_elective_lesson_ojbects(data, school):
        
         available_teachers = []
         for teacher in Teacher.objects.filter(id__in=item['available_teachers_ids'], school=school):
-            teacher_obj=TutorManager.get_or_create(id=teacher.id,name=teacher.name)
+            teacher_obj=TutorManager.get_or_create(id=teacher.id,name=teacher.name,min_lessons_per_week=teacher.min_lessons_per_week,max_lessons_per_week=teacher.max_lessons_per_week)
             available_teachers.append(teacher_obj)
         available_rooms = []
-        print(item['available_rooms_ids'])
         for room in Room.objects.filter(id__in=item['available_rooms_ids'], school=school):
             roomr_obj=ClassroomAssignmentManager.get_or_create(id=room.id,name=room.name,capacity=room.capacity,room_type=room.room_type,occupied=room.occupied)
             available_rooms.append(roomr_obj)
@@ -300,7 +299,7 @@ def create_core_lesson_ojbects(school):
                         subject = class_subject.subjects.first()
                         subject_obj=CourseManager.get_or_create(id=subject.id,name=subject.name)
                         class_subject_subject = ClassSubjectSubject.objects.get(class_subject=class_subject, subject=subject)
-                        available_teachers=[TutorManager.get_or_create(id=teacher.id,name=teacher.name) for teacher in class_subject_subject.assigned_teachers.all()]
+                        available_teachers=[TutorManager.get_or_create(id=teacher.id,name=teacher.name,min_lessons_per_week=teacher.min_lessons_per_week,max_lessons_per_week=teacher.max_lessons_per_week) for teacher in class_subject_subject.assigned_teachers.all()]
                         available_rooms = []
                         for room in class_subject_subject.preferred_rooms.all():
                             roomr_obj=ClassroomAssignmentManager.get_or_create(id=room.id,name=room.name,capacity=room.capacity,room_type=room.room_type,occupied=room.occupied)

@@ -17,6 +17,7 @@ urlpatterns = [
             path('assign-subjects-to-all-classrooms/<str:pk>/', class_room_views.assign_subjects_to_all_classrooms, name='assign-subjects-to-all-classrooms'),
             path('assign-subjects-to-single-classroom/<str:pk>/', class_room_views.assign_subjects_to_single_classroom, name='assign-subjects-to-single-classrooms'),
             path('update-elective-group/', class_room_views.update_elective_group, name='update-elective-group'),
+            path('grade-subjects/', class_room_views.get_grade_subjects, name='grade_subjects'),
 
 
 

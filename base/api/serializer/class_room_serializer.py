@@ -139,12 +139,12 @@ class SubjectDetailSerializer(serializers.ModelSerializer):
 
 class ClassSubjectSubjectDetailSerializer(serializers.ModelSerializer):
     subject = SubjectDetailSerializer()
-    alotted_teachers = TeacherDetailSerializer(source='assigned_teachers', many=True)
+    allotted_teachers = TeacherDetailSerializer(source='assigned_teachers', many=True)
     preferred_rooms = RoomSerializer( many=True,)
 
     class Meta:
         model = ClassSubjectSubject
-        fields = ['subject', 'number_of_students', 'alotted_teachers','preferred_rooms']
+        fields = ['subject', 'number_of_students', 'allotted_teachers','preferred_rooms']
 
 
 
@@ -315,7 +315,24 @@ class ClassSubjectUpdateSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if 'subjects' not in data:
             raise serializers.ValidationError("Subjects field is required.")
+
+        instance = self.instance
+        subjects_data = data.get('subjects', [])
+
+        # Check if this is an elective subject
+        if instance and instance.elective_or_core:
+            total_students = sum(subject.get('number_of_students', 0) for subject in subjects_data)
+            if total_students > instance.class_room.number_of_students:
+                raise serializers.ValidationError(
+                    "For elective subjects, total number of students must be less than or equal to the number of students in the classroom."
+                )
+
+        # Validate core subjects have at most one subject
+        if instance and not instance.elective_or_core and len(subjects_data) > 1:
+            raise serializers.ValidationError('Core subjects must have at most one subject.')
+
         return data
+
 
     def update(self, instance, validated_data):
         with transaction.atomic():
@@ -332,17 +349,15 @@ class ClassSubjectUpdateSerializer(serializers.ModelSerializer):
             subjects_data = validated_data.pop('subjects', [])
             for subject_data in subjects_data:
                 try:
-                    class_subject_subject =  ClassSubjectSubject.objects.create(
-                            school=instance.school,
-                            class_subject=instance,
-                            subject=subject_data['subject'],
-                            number_of_students=subject_data['number_of_students']
-                        )
+                    class_subject_subject = ClassSubjectSubject.objects.create(
+                        school=instance.school,
+                        class_subject=instance,
+                        subject=subject_data['subject'],
+                        number_of_students=subject_data['number_of_students']
+                    )
                     class_subject_subject.assigned_teachers.set(subject_data['assigned_teachers'])
-
                     class_subject_subject.preferred_rooms.set(subject_data['preferred_rooms'])
                 except KeyError as e:
                     raise serializers.ValidationError(f"Missing required field: {str(e)}")
 
         return instance
-

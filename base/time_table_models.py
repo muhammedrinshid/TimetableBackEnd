@@ -123,7 +123,7 @@ class Lesson(models.Model):
     timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='lessons')
     school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lessons')
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
-    alotted_teacher = models.ForeignKey(Tutor, on_delete=models.CASCADE, related_name='allotted_lessons')
+    allotted_teacher = models.ForeignKey(Tutor, on_delete=models.CASCADE, related_name='allotted_lessons')
     # available_teachers = models.ManyToManyField(Tutor, related_name='available_lessons')
     class_sections = models.ManyToManyField(ClassSection, through='LessonClassSection', related_name="lessons")
     classroom_assignment = models.ForeignKey(ClassroomAssignment, on_delete=models.CASCADE)
