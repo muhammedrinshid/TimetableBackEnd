@@ -100,6 +100,31 @@ class StandardLevelManager:
             return new_instance
 
 @problem_fact
+class GradeLevel:
+    def __init__(self, id, short_name):
+        self.id = id
+        self.short_name = short_name
+
+    @planning_id
+    def get_id(self):
+        return self.id
+
+    def __str__(self):
+        return f"standard={self.short_name}"
+
+class GradeLevelManager:
+    _registry = {}
+
+    @classmethod
+    def get_or_create(cls, id, short_name):
+        if id in cls._registry:
+            return cls._registry[id]
+        else:
+            new_instance = GradeLevel(id, short_name)
+            cls._registry[id] = new_instance
+            return new_instance
+
+@problem_fact
 class ClassSection():
     def __init__(self, id, standard, division, name):
         self.id = id
@@ -163,8 +188,6 @@ class Tutor:
     def get_id(self):
         return self.id
 
-    def get_assigned_lessons_count(self):
-        return tracker.get_assigned_lessons_count(self)
 
     def __str__(self):
         return f"Tutor(name={self.name})"
@@ -183,30 +206,10 @@ class TutorManager:
 
 
 
-class LessonTracker:
-    def __init__(self):
-        self.teacher_lessons = {}
-        self.lesson_teacher = {}
-
-    def assign_lesson(self, teacher, lesson):
-        # If the lesson was previously assigned to another teacher, unassign it
-        if lesson in self.lesson_teacher:
-            old_teacher = self.lesson_teacher[lesson]
-            self.teacher_lessons[old_teacher].remove(lesson)
-            if not self.teacher_lessons[old_teacher]:
-                del self.teacher_lessons[old_teacher]
-
-        # Assign the lesson to the new teacher
-        if teacher not in self.teacher_lessons:
-            self.teacher_lessons[teacher] = set()
-        self.teacher_lessons[teacher].add(lesson)
-        self.lesson_teacher[lesson] = teacher
-
-tracker = LessonTracker()
 
 @planning_entity
 class Lesson:
-    def __init__(self, id, subject, available_teachers, class_sections, lesson_no, available_rooms, is_elective=False, allotted_room=None, timeslot=None, allotted_teacher=None, elective=None, students_distribution=None, elective_subject_name=''):
+    def __init__(self, id, subject, available_teachers, class_sections, lesson_no, available_rooms,grade_level, is_elective=False, allotted_room=None, timeslot=None, allotted_teacher=None, elective=None, students_distribution=None, elective_subject_name=''):
         self.id = id
         self.subject = subject
         self.available_teachers = available_teachers
@@ -217,6 +220,7 @@ class Lesson:
         self.elective = elective
         self.students_distribution = students_distribution
         self.elective_subject_name = elective_subject_name
+        self.grade_level=grade_level
         
         # Planning variables
         self.allotted_teacher = allotted_teacher
@@ -234,11 +238,21 @@ class Lesson:
     def set_timeslot(self, new_timeslot):
         self.timeslot = new_timeslot
         
+    
+    @planning_variable(Tutor, value_range_provider_refs=['teacherRange'])
+    def get_allotted_teacher(self):
+        return self.allotted_teacher
+    
+    def set_allotted_teacher(self, new_teacher):
+        # Update the allotted teacher
+        self.allotted_teacher = new_teacher
+    
     @problem_fact_collection_property(Tutor)
     @value_range_provider('teacherRange')
     def get_teacher_range(self):
         return self.available_teachers
-
+        
+        
     @planning_variable(ClassroomAssignment, value_range_provider_refs=["roomRange"])
     def get_allotted_room(self):
         return self.allotted_room
@@ -246,19 +260,7 @@ class Lesson:
     def set_allotted_room(self, new_room):
         self.allotted_room = new_room
 
-    @planning_variable(Tutor, value_range_provider_refs=['teacherRange'])
-    def get_allotted_teacher(self):
-        return self.allotted_teacher
-
-    def set_allotted_teacher(self, new_teacher):
-        # Update the allotted teacher
-        self.allotted_teacher = new_teacher
-        
-        # Use tracker to assign the lesson to the new teacher
-        # This will handle both assignment and unassignment
-        # if new_teacher:
-        #     tracker.assign_lesson(new_teacher, self)
-
+    
 
     @problem_fact_collection_property(ClassroomAssignment)
     @value_range_provider('roomRange')
@@ -284,14 +286,16 @@ class TimeTable:
     def get_timeslot_list(self):
         return self.timeslot_list
 
+    @problem_fact_collection_property(Tutor)
+    def get_tutors(self):
+        return self.tutors
+    
     @planning_entity_collection_property(Lesson)
     def get_lesson_list(self):
         return self.lesson_list
 
-    @problem_fact_collection_property(Tutor)
-    def get_tutors(self):
-        return self.tutors
-
+    
+  
     @planning_score(HardSoftScore)
     def get_score(self):
         return self.score

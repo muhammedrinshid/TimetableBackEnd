@@ -3,7 +3,7 @@ from ..time_table_models import Timetable, StandardLevel, ClassSection, Course, 
 from ..models import ElectiveGroup,Classroom,Standard,Teacher,Subject,Grade,ClassSubject,ClassSubjectSubject,Room
 from collections import defaultdict
 import uuid
-from ..optapy_solver.domain import Timeslot,Lesson,ClassSection,StandardLevelManager,TutorManager,CourseManager,ClassroomAssignmentManager,ClassSectionManager,ElectiveGrpManager
+from ..optapy_solver.domain import Timeslot,Lesson,ClassSection,StandardLevelManager,TutorManager,GradeLevelManager,CourseManager,ClassroomAssignmentManager,ClassSectionManager,ElectiveGrpManager
 
 def balance_rooms(rooms, avg_per_classroom, max_iterations=100):
     iteration_count = 0
@@ -248,6 +248,8 @@ def create_elective_lesson_ojbects(data, school):
             class_sections.append(classroom_obj)
 
         elective_group = ElectiveGroup.objects.get(id=item['elective'])
+        grade_obj = GradeLevelManager.get_or_create(id=elective_group.standard.grade.id, short_name=elective_group.standard.grade.short_name)
+
         elective = ElectiveGrpManager.get_or_create(
             id=elective_group.id,
             name=elective_group.name,
@@ -268,6 +270,7 @@ def create_elective_lesson_ojbects(data, school):
                 elective=elective,
                 elective_subject_name=elective_subject_name,
                 is_elective=True,
+                grade_level=grade_obj,
 
                 students_distribution=item['students_distribution']
             )
@@ -282,6 +285,8 @@ def create_core_lesson_ojbects(school):
 
     lessons = []
     for grade in Grade.objects.filter(school=school):
+        grade_obj=GradeLevelManager.get_or_create(id=grade.id,short_name=grade.short_name)
+
         for standard in Standard.objects.filter(grade=grade,school=school):
             standard_obj=StandardLevelManager.get_or_create(id=standard.id,short_name=standard.short_name)
             
@@ -316,7 +321,8 @@ def create_core_lesson_ojbects(school):
                                 class_sections=[classroom_obj],
                                 available_rooms=available_rooms,
                                 lesson_no=lesson_no,
-                                elective_subject_name=class_subject.name
+                                elective_subject_name=class_subject.name,
+                                grade_level=grade_obj
 
                             )
                             lessons.append(lesson)

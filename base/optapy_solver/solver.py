@@ -19,26 +19,19 @@ def print_timetable(solution):
 
 def run_optimization(request):
     # Here you would collect data from your Django models and create the problem instance
+    
     problem = create_problem_from_django_models(request.user)
     solver_config = optapy.config.solver.SolverConfig() \
-    .withEntityClasses(Lesson) \
-    .withSolutionClass(TimeTable) \
-    .withConstraintProviderClass(define_constraints) \
-    .withTerminationSpentLimit(Duration.ofSeconds(30))
+        .withEntityClasses(Lesson) \
+        .withSolutionClass(TimeTable) \
+        .withConstraintProviderClass(define_constraints) \
+        .withTerminationSpentLimit(Duration.ofSeconds(60))
 
-    solution = solver_factory_create(solver_config) \
-        .buildSolver() \
-        .solve(problem)
+    solver = solver_factory_create(solver_config).buildSolver()
 
-    # print_timetable(solution)
-    # constraint_matches = optapy.score_manager_create(solver_config) \
-    #     .explainScore(solution)
+    solution = solver.solve(problem)
 
-    # for constraint_match in constraint_matches:
-    #     print(f"Constraint: {constraint_match.get_constraint_name()}")
-    #     print(f"Match score: {constraint_match.get_score()}")
-    #     print(f"Justification: {constraint_match.get_justification()}")
-    #     print("---")
+   
 
     return solution
 def create_problem_from_django_models(user):
@@ -46,6 +39,8 @@ def create_problem_from_django_models(user):
     school = user 
     rooms = [ClassroomAssignmentManager.get_or_create(id=room.id,name= room.name,capacity=room.capacity,room_type=room.room_type,occupied=room.occupied) for room in Room.objects.filter(school=school)]
     tutors=[TutorManager.get_or_create(id=teacher.id,name=teacher.name,min_lessons_per_week=teacher.min_lessons_per_week,max_lessons_per_week=teacher.max_lessons_per_week) for teacher in Teacher.objects.filter(school=school)]
+    for teacher in tutors:
+        print(teacher.name,teacher.min_lessons_per_week,teacher.max_lessons_per_week)
     working_days = school.working_days
     teaching_slots = school.teaching_slots
     timeslots = [

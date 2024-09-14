@@ -35,12 +35,20 @@ def parse_hard_violations_from_score(score):
                 hard_violations = int(part.split('hard')[0])
                 break
     return hard_violations
+
+
+
+
+
+
+
+
 def save_optimization_results(user, solution):
     try:
         with transaction.atomic():
             # Create Timetable
             score = solution.get_score()
-            number_of_lessons = (user.teaching_slots)
+            number_of_lessons = user.teaching_slots
 
             timetable = Timetable.objects.create(
                 name=f"Timetable_{user.username}_{Timetable.objects.filter(school=user).count() + 1}",
@@ -50,38 +58,61 @@ def save_optimization_results(user, solution):
 
             for lesson in solution.get_lesson_list():
                 # Process Course
-                subject=Subject.objects.get(id=lesson.subject.id)
+                try:
+                    subject = lesson.subject
+                    if subject is None:
+                        raise ValueError("Lesson subject is None")
+                    subject_instance = Subject.objects.get(id=subject.id)
+                except (Subject.DoesNotExist, AttributeError, ValueError) as e:
+                    print(f"Error processing subject: {e}")
+                    continue
+
                 course, _ = Course.objects.get_or_create(
-                    subject=subject,
+                    subject=subject_instance,
                     timetable=timetable,
                     school=user,
-                    defaults={'name': lesson.subject.name}
+                    defaults={'name': subject.name}
                 )
 
                 # Process Tutor
-                teacher=Teacher.objects.get(id=lesson.allotted_teacher.id)
+                try:
+                    teacher = lesson.allotted_teacher
+                    if teacher is None:
+                        raise ValueError("Allotted teacher is None")
+                    teacher_instance = Teacher.objects.get(id=teacher.id)
+                except (Teacher.DoesNotExist, AttributeError, ValueError) as e:
+                    continue
+
                 tutor, _ = Tutor.objects.get_or_create(
-                    teacher=teacher,
+                    teacher=teacher_instance,
                     timetable=timetable,
                     school=user,
-                    defaults={'name': lesson.allotted_teacher.name}
+                    defaults={'name': teacher.name}
                 )
 
                 # Process ClassroomAssignment
                 room = lesson.get_allotted_room()
                 if room:
-                    room=Room.objects.get(id=room.id)
-                    classroom_assignment, _ = ClassroomAssignment.objects.get_or_create(
-                        room=room,
-                        timetable=timetable,
-                        school=user,
-                        defaults={
-                            'name': room.name,
-                            'capacity': getattr(room, 'capacity', 30),
-                            'room_type': getattr(room, 'room_type', 'Standard'),
-                            'occupied': getattr(room, 'occupied', False)
-                        }
-                    )
+                    try:
+                        room_instance = Room.objects.get(id=room.id)
+                    except (Room.DoesNotExist, AttributeError) as e:
+                        print(f"Error processing room: {e}")
+                        room_instance = None
+
+                    if room_instance:
+                        classroom_assignment, _ = ClassroomAssignment.objects.get_or_create(
+                            room=room_instance,
+                            timetable=timetable,
+                            school=user,
+                            defaults={
+                                'name': room_instance.name,
+                                'capacity': getattr(room_instance, 'capacity', 30),
+                                'room_type': getattr(room_instance, 'room_type', 'Standard'),
+                                'occupied': getattr(room_instance, 'occupied', False)
+                            }
+                        )
+                    else:
+                        classroom_assignment = None
                 else:
                     classroom_assignment = None
 
@@ -111,34 +142,46 @@ def save_optimization_results(user, solution):
 
                 # Process ClassSection
                 for class_section in lesson.class_sections:
-                    std=Standard.objects.get(id=class_section.standard.id)
-                    standard, _ = StandardLevel.objects.get_or_create(
+                    try:
+                        standard = class_section.standard
+                        if standard is None:
+                            raise ValueError("Class section standard is None")
+                        std_instance = Standard.objects.get(id=standard.id)
+                    except (Standard.DoesNotExist, AttributeError, ValueError) as e:
+                        print(f"Error processing standard: {e}")
+                        continue
+
+                    standard_level, _ = StandardLevel.objects.get_or_create(
                         name=class_section.standard.short_name,
                         timetable=timetable,
                         school=user,
-                        standard=std
+                        standard=std_instance
                     )
-                    classroom=Classroom.objects.get(id=class_section.id)
+
+                    try:
+                        classroom_instance = Classroom.objects.get(id=class_section.id)
+                    except (Classroom.DoesNotExist, AttributeError) as e:
+                        print(f"Error processing classroom: {e}")
+                        continue
+
                     class_section_obj, _ = ClassSection.objects.get_or_create(
-                        classroom=classroom,
+                        classroom=classroom_instance,
                         timetable=timetable,
                         school=user,
                         defaults={
-                            'standard': standard,
+                            'standard': standard_level,
                             'division': class_section.division,
                             'name': class_section.name
                         }
                     )
 
                     # Get number of students from the lesson's students_distribution
-                    # Ensure students_distribution is not None
                     students_distribution = lesson.students_distribution or {}
                     number_of_students = students_distribution.get(str(class_section.id), 0)
 
-
                     # Create LessonClassSection relationship
                     LessonClassSection.objects.create(
-                        lesson=lesson_instance,  # Use the created Lesson instance
+                        lesson=lesson_instance,
                         class_section=class_section_obj,
                         number_of_students=number_of_students
                     )
@@ -147,14 +190,10 @@ def save_optimization_results(user, solution):
 
     except Exception as e:
         # Log the error or handle it as appropriate for your application
+        import traceback
         print(f"Error saving optimization results: {str(e)}")
+        traceback.print_exc()
         raise
-
-
-
-
-
-
 
 
 @api_view(['GET'])
