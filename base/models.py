@@ -165,9 +165,33 @@ class User(AbstractUser):
      
      
      
-     
-     
-     
+class UserConstraintSettings(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='constraint_settings')
+
+    # Hard constraints (not changeable)
+    room_conflict = models.BooleanField(default=True, editable=False)
+    teacher_conflict = models.BooleanField(default=True, editable=False)
+    student_group_conflict = models.BooleanField(default=True, editable=False)
+
+    # Changeable constraints
+    elective_group_timeslot = models.BooleanField(default=True)
+    ensure_teacher_assigned = models.BooleanField(default=True)
+    ensure_timeslot_assigned = models.BooleanField(default=True)
+
+    # Soft constraints
+    tutor_lesson_load = models.BooleanField(default=True)
+    daily_lesson_limit = models.BooleanField(default=True)
+    prefer_consistent_teacher_for_subject = models.BooleanField(default=True)
+    prefer_subject_once_per_day = models.BooleanField(default=True)
+    avoid_teacher_consecutive_periods_overlapping_class = models.BooleanField(default=True)
+    avoid_continuous_subjects = models.BooleanField(default=True)
+    avoid_continuous_teaching = models.BooleanField(default=True)
+    avoid_consecutive_elective_lessons = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Constraint Settings for {self.user.username}"    
+
+
      
      
      

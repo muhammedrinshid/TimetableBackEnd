@@ -1,11 +1,15 @@
 from .domain import TimeTable
 from .domain import Timeslot,Lesson,ClassSection,StandardLevelManager,TutorManager,CourseManager,ClassroomAssignmentManager,ClassSectionManager
 import uuid
+from optapy.constraint import ConstraintMatchTotal
+
+
 from .solver_helper_functions import create_core_lesson_ojbects,create_elective_lesson_ojbects,get_all_elective_group_of_user,create_elective_lesson_data
 import optapy.config
 from optapy.types import Duration
 from optapy import solver_factory_create
 from .constraints import define_constraints
+from optapy import config, solver_factory_create
 
 
 
@@ -18,22 +22,47 @@ def print_timetable(solution):
               )
 
 def run_optimization(request):
-    # Here you would collect data from your Django models and create the problem instance
-    
     problem = create_problem_from_django_models(request.user)
-    solver_config = optapy.config.solver.SolverConfig() \
-        .withEntityClasses(Lesson) \
-        .withSolutionClass(TimeTable) \
-        .withConstraintProviderClass(define_constraints) \
-        .withTerminationSpentLimit(Duration.ofSeconds(60))
-
+    
+    # Create a solver config
+    solver_config = config.solver.SolverConfig()
+    
+    # Set the model
+    solver_config.withEntityClasses(Lesson)
+    solver_config.withSolutionClass(TimeTable)
+    
+    # Set the constraint provider
+    solver_config.withConstraintProviderClass(define_constraints)
+    
+    # Set termination condition
+    solver_config.withTerminationSpentLimit(Duration.ofMinutes(20))
+    
+    # Configure phases
+    construction_heuristic_phase = config.constructionheuristic.ConstructionHeuristicPhaseConfig()
+    local_search_phase = config.localsearch.LocalSearchPhaseConfig()
+    
+    # Configure local search
+    local_search_phase.setLocalSearchType(config.localsearch.LocalSearchType.LATE_ACCEPTANCE)
+    
+    # Set phases using OptaPy's native method
+    solver_config.withPhases(construction_heuristic_phase, local_search_phase)
+    
+    # Create solver and solve
     solver = solver_factory_create(solver_config).buildSolver()
-
     solution = solver.solve(problem)
-
-   
-
+    
+    # Directly access the score attribute from the solution
+    score = solution.score
+    
+    # Add logging or debugging output
+    print(f"Best score: {score}")
+    print(f"Number of lessons scheduled: {len(solution.lesson_list)}, Total Number of Lessons to Schedule: {len(problem.lesson_list)}")
+    
+    # Violated constraints are usually identified by setting up Constraint Match Totals, this will depend on how constraints are tracked
+    # This will require setting up constraint matches when you define your constraints
+    
     return solution
+
 def create_problem_from_django_models(user):
     from ..models import User, Room, Grade, Standard, Classroom, ClassSubject, ClassSubjectSubject, Teacher
     school = user 
