@@ -217,7 +217,7 @@ def run_module_view(request):
             serializer = TimetableSerializer(timetable)
             return Response({
                 "message": "Timetable optimization completed and saved",
-                # "timetable": serializer.data
+                "timetable": serializer.data['id']
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({
@@ -388,7 +388,7 @@ def get_teacher_single_day_timetable(request, day_of_week):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_whole_teacher_week_timetable(request):
+def get_whole_teacher_default_week_timetable(request):
     user = request.user
 
     timetable = get_object_or_404(Timetable, school=user, is_default=True)
@@ -406,7 +406,35 @@ def get_whole_teacher_week_timetable(request):
     return Response(serializer.data)
 
 
-
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_whole_teacher_week_timetable(request, pk):
+    user = request.user
+    
+    # Check if pk is provided
+    if pk is None:
+        return Response({"error": "Timetable ID is required"}, status=400)
+    
+    try:
+        # Get the timetable instance
+        timetable = Timetable.objects.get(school=user, id=pk)
+    except Timetable.DoesNotExist:
+        return Response({"error": "Timetable not found"}, status=404)
+    except Exception as e:
+        logging.error(e)
+        return Response({"error": "Internal Server Error"}, status=500)
+    
+    # Get working days for the user
+    working_days = user.working_days
+    
+    # Initialize week timetable
+    week_timetable = {day: get_teacher_day_timetable(user, timetable, day) for day in working_days}
+    
+    # Serialize the week timetable
+    serializer = WholeTeacherWeekTimetableSerializer(week_timetable, working_days=working_days)
+    
+    # Return the response
+    return Response(serializer.data)
 
 
 
@@ -476,7 +504,7 @@ def get_student_single_day_timetable(request, day_of_week):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_student_week_timetable(request):
+def get_whole_student_default_week_timetable(request):
     user = request.user
     timetable = get_object_or_404(Timetable, school=user, is_default=True)
     
@@ -489,6 +517,42 @@ def get_student_week_timetable(request):
     
     serializer = StudentWeekTimetableSerializer(week_timetable, working_days=working_days)
     return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_whole_student_week_timetable(request, pk):
+    user = request.user
+    
+    # Check if pk is provided
+    if pk is None:
+        return Response({"error": "Timetable ID is required"}, status=400)
+    
+    # Get the timetable instance
+    try:
+        timetable = Timetable.objects.get(school=user, id=pk)
+    except Timetable.DoesNotExist:
+        return Response({"error": "Timetable not found"}, status=404)
+    
+    # Get working days for the user
+    working_days = user.working_days
+    
+    # Initialize week timetable
+    week_timetable = {}
+    
+    # Iterate over working days
+    for day_code in working_days:
+        day_timetable = get_student_day_timetable(user, timetable, day_code)
+        week_timetable[day_code] = day_timetable
+    
+    # Serialize the week timetable
+    serializer = StudentWeekTimetableSerializer(week_timetable, working_days=working_days)
+    
+    # Return the response
+    return Response(serializer.data)
+
+
+
+
 
 
 

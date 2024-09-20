@@ -41,7 +41,7 @@ def run_optimization(request):
     solver_config.withConstraintProviderClass(constraint_provider)
     
     # Set termination condition
-    solver_config.withTerminationSpentLimit(Duration.ofMinutes(1))
+    solver_config.withTerminationSpentLimit(Duration.ofSeconds(15))
     
     # Configure phases
     construction_heuristic_phase = config.constructionheuristic.ConstructionHeuristicPhaseConfig()
