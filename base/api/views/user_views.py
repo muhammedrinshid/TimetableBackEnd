@@ -2,9 +2,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes,parser_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from ..serializer.user_serializer import UserSerializer,GradeSerializer,SubjectSerializer
+from ..serializer.user_serializer import UserSerializer,GradeSerializer,SubjectSerializer,UserConstraintSettingsSerializer
 from django.shortcuts import get_object_or_404
-from ...models import User,Grade,Subject
+from ...models import User,Grade,Subject,UserConstraintSettings
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 @api_view(['GET', 'PUT'])
@@ -123,4 +123,26 @@ def subjects(request):
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)    
 
-                
+
+
+
+
+@api_view(['GET', 'PUT'])
+@permission_classes([IsAuthenticated])
+def user_constraint_settings(request):
+    try:
+        constraint_settings = UserConstraintSettings.objects.get(user=request.user)
+    except UserConstraintSettings.DoesNotExist:
+        constraint_settings = UserConstraintSettings(user=request.user)
+        constraint_settings.save()
+
+    if request.method == 'GET':
+        serializer = UserConstraintSettingsSerializer(constraint_settings)
+        return Response(serializer.data)
+
+    elif request.method == 'PUT':
+        serializer = UserConstraintSettingsSerializer(constraint_settings, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

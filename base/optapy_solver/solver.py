@@ -2,13 +2,14 @@ from .domain import TimeTable
 from .domain import Timeslot,Lesson,ClassSection,StandardLevelManager,TutorManager,CourseManager,ClassroomAssignmentManager,ClassSectionManager
 import uuid
 from optapy.constraint import ConstraintMatchTotal
+from base.models import UserConstraintSettings
 
 
 from .solver_helper_functions import create_core_lesson_ojbects,create_elective_lesson_ojbects,get_all_elective_group_of_user,create_elective_lesson_data
 import optapy.config
 from optapy.types import Duration
 from optapy import solver_factory_create
-from .constraints import define_constraints
+from .constraints import dynamic_constraint_provider
 from optapy import config, solver_factory_create
 
 
@@ -31,11 +32,16 @@ def run_optimization(request):
     solver_config.withEntityClasses(Lesson)
     solver_config.withSolutionClass(TimeTable)
     
+    
+    user_settings = UserConstraintSettings.objects.get(user=request.user)
+
+    constraint_provider = dynamic_constraint_provider(user_settings)
+
     # Set the constraint provider
-    solver_config.withConstraintProviderClass(define_constraints)
+    solver_config.withConstraintProviderClass(constraint_provider)
     
     # Set termination condition
-    solver_config.withTerminationSpentLimit(Duration.ofMinutes(20))
+    solver_config.withTerminationSpentLimit(Duration.ofMinutes(1))
     
     # Configure phases
     construction_heuristic_phase = config.constructionheuristic.ConstructionHeuristicPhaseConfig()

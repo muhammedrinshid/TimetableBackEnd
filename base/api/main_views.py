@@ -13,6 +13,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['teaching_slots'] = user.teaching_slots
         token['school_id'] = user.school_id
         token['is_ready_for_timetable'] = user.is_ready_for_timetable
+        token['profile_image'] = user.profile_image.url if user.profile_image else None
 
         return token
 

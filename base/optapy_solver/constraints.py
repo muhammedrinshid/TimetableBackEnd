@@ -4,27 +4,77 @@ from optapy.constraint import Joiners, ConstraintFactory
 from optapy.score import HardSoftScore
 from optapy.types import Constraint, ConstraintCollectors
 
-@constraint_provider
-def define_constraints(constraint_factory: ConstraintFactory):
-    return [
-        # Hard constraints
-        room_conflict(constraint_factory),
-        teacher_conflict(constraint_factory),
-        student_group_conflict(constraint_factory),
-        elective_group_timeslot_constraint(constraint_factory),
-        ensure_teacher_assigned(constraint_factory),
-        ensure_timeslot_assigned(constraint_factory),
+
+
+
+def dynamic_constraint_provider(user_settings):
+    @constraint_provider
+    def define_constraints(constraint_factory: ConstraintFactory):
+        constraints = []
+
+        # Hard constraints (not changeable)
+        constraints.extend([
+            room_conflict(constraint_factory),
+            teacher_conflict(constraint_factory),
+            student_group_conflict(constraint_factory),
+        ])
+
+        # Changeable constraints
+        if user_settings.elective_group_timeslot:
+            constraints.append(elective_group_timeslot_constraint(constraint_factory))
+        if user_settings.ensure_teacher_assigned:
+
+            constraints.append(ensure_teacher_assigned(constraint_factory))
+        if user_settings.ensure_timeslot_assigned:
+            constraints.append(ensure_timeslot_assigned(constraint_factory))
+
+        # Soft constraints
+        if user_settings.tutor_lesson_load:
+            constraints.append(tutor_lesson_load(constraint_factory))
+        if user_settings.daily_lesson_limit:
+            constraints.append(daily_lesson_limit(constraint_factory))
+        if user_settings.prefer_consistent_teacher_for_subject:
+            constraints.append(prefer_consistent_teacher_for_subject(constraint_factory))
+        if user_settings.prefer_subject_once_per_day:
+            constraints.append(prefer_subject_once_per_day(constraint_factory))
+        if user_settings.avoid_teacher_consecutive_periods_overlapping_class:
+            constraints.append(avoid_teacher_consecutive_periods_overlapping_class(constraint_factory))
+        if user_settings.avoid_continuous_subjects:
+            constraints.append(avoid_continuous_subjects(constraint_factory))
+        if user_settings.avoid_continuous_teaching:
+            constraints.append(avoid_continuous_teaching(constraint_factory))
+        if user_settings.avoid_consecutive_elective_lessons:
+            constraints.append(avoid_consecutive_elective_lessons(constraint_factory))
+
+        return constraints
+
+    return define_constraints
+
+
+
+
+
+# @constraint_provider
+# def define_constraints(constraint_factory: ConstraintFactory):
+#     return [
+#         # Hard constraints
+#         room_conflict(constraint_factory),
+#         teacher_conflict(constraint_factory),
+#         student_group_conflict(constraint_factory),
+#         elective_group_timeslot_constraint(constraint_factory),
+#         ensure_teacher_assigned(constraint_factory),
+#         ensure_timeslot_assigned(constraint_factory),
         
-        # Soft constraints (ordered by priority)
-        tutor_lesson_load(constraint_factory),
-        daily_lesson_limit(constraint_factory),
-        prefer_consistent_teacher_for_subject(constraint_factory),
-        prefer_subject_once_per_day(constraint_factory),
-        avoid_teacher_consecutive_periods_overlapping_class(constraint_factory),
-        avoid_continuous_subjects(constraint_factory),
-        avoid_continuous_teaching(constraint_factory),
-        avoid_consecutive_elective_lessons(constraint_factory),
-    ]
+#         # Soft constraints (ordered by priority)
+#         tutor_lesson_load(constraint_factory),
+#         daily_lesson_limit(constraint_factory),
+#         prefer_consistent_teacher_for_subject(constraint_factory),
+#         prefer_subject_once_per_day(constraint_factory),
+#         avoid_teacher_consecutive_periods_overlapping_class(constraint_factory),
+#         avoid_continuous_subjects(constraint_factory),
+#         avoid_continuous_teaching(constraint_factory),
+#         avoid_consecutive_elective_lessons(constraint_factory),
+#     ]
 
 # Hard constraints
 

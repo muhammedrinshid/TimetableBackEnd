@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from ...models import User,Grade,Subject
+from ...models import User,Grade,Subject,UserConstraintSettings
+
 
 
 class GradeSerializer(serializers.ModelSerializer):
@@ -38,4 +39,7 @@ class UserSerializer(serializers.ModelSerializer):
         return representation
     
     
-    
+class UserConstraintSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserConstraintSettings
+        exclude = ['user']  # Exclude user field as it will be set automatically
