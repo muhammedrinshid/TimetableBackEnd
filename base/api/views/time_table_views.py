@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from ...models import  Teacher, Subject, Room,Classroom,Standard
 from ..serializer.time_table_serializer import TeacherDayTimetableSerializer,StudentWeekTimetableSerializer,StudentDayTimetableSerializer,WholeTeacherWeekTimetableSerializer,TeacherWeekTimetableSerializer,ClassroomWeekTimetableSerializer
 from django.shortcuts import get_object_or_404
-
+import re
 
 
 
@@ -37,23 +37,37 @@ def parse_hard_violations_from_score(score):
     return hard_violations
 
 
+def calculate_performance_score(hard=100, soft=100):
+    # If both hard and soft scores are zero, return 100
+    if hard == 0 and soft == 0:
+        return 100
+    
+    # Calculate a normalized performance score out of 100
+    max_possible_penalty = 100  # You can adjust this based on your scoring scale
+    hard_penalty = abs(hard) * 2  # Give more weight to hard score (adjust as needed)
+    soft_penalty = abs(soft) / 1000  # Less weight to soft score (adjust as needed)
 
+    # Total penalty should not exceed the max possible penalty
+    total_penalty = min(hard_penalty + soft_penalty, max_possible_penalty)
+    
+    # Calculate the final score out of 100
+    performance_score = 100 - total_penalty
+    return max(performance_score, 0)  # Ensure score doesn't go below 0
 
-
-
-
-
-def save_optimization_results(user, solution):
+def save_optimization_results(user, solution,score,hard_score,soft_score):
     try:
         with transaction.atomic():
             # Create Timetable
-            score = solution.get_score()
             number_of_lessons = user.teaching_slots
 
             timetable = Timetable.objects.create(
                 name=f"Timetable_{user.username}_{Timetable.objects.filter(school=user).count() + 1}",
                 school=user,
                 number_of_lessons=number_of_lessons,
+                soft_score=soft_score,
+                hard_score=hard_score,
+                score=score
+                
             )
 
             for lesson in solution.get_lesson_list():
@@ -198,38 +212,43 @@ def save_optimization_results(user, solution):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def run_module_view(request):
+def run_module_view(request,seconds):
     # Run the optimization process
-    optimization_result = run_optimization(request=request)
+    optimization_result = run_optimization(seconds,request=request)
     # print(optimization_result)
     # Access the score
-    score = optimization_result.get_score()  # or use optimization_result.score
+    optimaization_score = optimization_result.get_score()  # or use optimization_result.score
+    parsed_score = {
+        "hard": optimaization_score.getHardScore(),
+        "soft": optimaization_score.getSoftScore(),
+    }
+    calculated_score=calculate_performance_score(parsed_score["soft"],parsed_score["hard"])
+    
 
-    # Check if score indicates any hard constraint violations
-    # Assuming score is an object or string that includes information on hard constraint violations
-    hard_constraints_violated = score.hard_constraint_violations == 0 if hasattr(score, 'hard_constraint_violations') else parse_hard_violations_from_score(score)
-
-    if hard_constraints_violated == 0:
         
-        try:
-            # Save the optimization results
-            timetable = save_optimization_results(request.user, optimization_result)
-            serializer = TimetableSerializer(timetable)
-            return Response({
-                "message": "Timetable optimization completed and saved",
-                "timetable": serializer.data['id']
-            }, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({
-                "message": "Error saving optimization results",
-                "error": str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    else:
-        # Return an error if there are hard constraint violations
+    try:
+        # Save the optimization results
+        timetable = save_optimization_results(request.user, optimization_result,score=calculated_score,hard_score=parsed_score["hard"],soft_score=parsed_score['soft'],)
+        serializer = TimetableSerializer(timetable)
+        all_scores={  
+            "hard":serializer.data['hard_score'],
+            "soft":serializer.data['soft_score'],
+            "score":serializer.data['score'],
+            
+           }
         return Response({
-            "message": "Optimization failed due to hard constraint violations",
-            "violations": hard_constraints_violated
-        }, status=status.HTTP_400_BAD_REQUEST)
+            "message": "Timetable optimization completed and saved",
+            "timetable": serializer.data['id'],
+             "scores":all_scores,
+          
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            "message": "Error saving optimization results",
+            "error": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    
         
         
         

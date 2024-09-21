@@ -12,6 +12,8 @@ class TimetableSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'score',
+            'soft_score',
+            'hard_score',
             'optimal',
             'feasible',
             'created',

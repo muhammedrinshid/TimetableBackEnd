@@ -131,14 +131,6 @@ admin.site.register(Room, RoomAdmin)
 admin.site.register(User, CustomUserAdmin)
 
 
-
-
-
-class TimetableAdmin(admin.ModelAdmin):
-    list_display = ('name', 'school', 'score', 'optimal', 'feasible', 'is_default', 'created', 'updated',)
-    list_filter = ('school', 'optimal', 'feasible', 'is_default')
-    search_fields = ('name', 'school__username')  # Assuming User model has a username field
-
 class StandardLevelAdmin(admin.ModelAdmin):
     list_display = ('name', 'standard_id', 'timetable', 'school')
     list_filter = ('timetable', 'school')
@@ -172,6 +164,19 @@ class TimeslotAdmin(admin.ModelAdmin):
     list_display = ('day_of_week', 'period', 'timetable', 'school')
     list_filter = ('day_of_week', 'timetable', 'school')
     search_fields = ('day_of_week', 'period', 'timetable__name', 'school__username')
+class TimetableAdmin(admin.ModelAdmin):
+    list_display = ('name', 'school', 'score', 'optimal', 'feasible', 'is_default')
+    list_filter = ('school', 'optimal', 'feasible', 'is_default')
+    search_fields = ('name', 'school__username')
+    readonly_fields = ('id', 'created', 'updated')
+    autocomplete_fields = ['school']
+    fieldsets = (
+        (None, {'fields': ('name', 'school')}),
+        ('Scores', {'fields': ('score', 'hard_score', 'soft_score')}),
+        ('Status', {'fields': ('optimal', 'feasible', 'is_default')}),
+        ('Metadata', {'fields': ('created', 'updated', 'id')}),
+        ('Lesson Settings', {'fields': ('number_of_lessons',)}),
+    )
 
 class LessonAdmin(admin.ModelAdmin):
     list_display = ('course', 'allotted_teacher', 'timeslot', 'timetable', 'school','elective_subject_name')
@@ -196,3 +201,7 @@ admin.site.register(Tutor, TutorAdmin)
 admin.site.register(ClassroomAssignment, ClassroomAssignmentAdmin)
 admin.site.register(Timeslot, TimeslotAdmin)
 admin.site.register(Lesson, LessonAdmin)
+
+
+
+

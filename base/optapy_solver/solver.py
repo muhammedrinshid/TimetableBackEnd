@@ -22,7 +22,7 @@ def print_timetable(solution):
               f"Timeslot: {lesson.class_sections}"
               )
 
-def run_optimization(request):
+def run_optimization(seconds,request):
     problem = create_problem_from_django_models(request.user)
     
     # Create a solver config
@@ -41,7 +41,7 @@ def run_optimization(request):
     solver_config.withConstraintProviderClass(constraint_provider)
     
     # Set termination condition
-    solver_config.withTerminationSpentLimit(Duration.ofSeconds(15))
+    solver_config.withTerminationSpentLimit(Duration.ofSeconds(seconds))
     
     # Configure phases
     construction_heuristic_phase = config.constructionheuristic.ConstructionHeuristicPhaseConfig()

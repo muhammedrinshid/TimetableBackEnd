@@ -12,13 +12,15 @@ class Timetable(models.Model):
     name = models.CharField(max_length=100)
     school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='timetables')
     score = models.IntegerField(null=True, blank=True)
+    hard_score = models.IntegerField( null=True, blank=True) 
+    soft_score = models.IntegerField( null=True, blank=True)  
     optimal = models.BooleanField(default=False, null=True, blank=True)
     feasible = models.BooleanField(default=False, null=True, blank=True)
     number_of_lessons=models.IntegerField(editable=True,null=True,blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     is_default = models.BooleanField(default=False)
-   
+    
 
     def __str__(self):
         return self.name
