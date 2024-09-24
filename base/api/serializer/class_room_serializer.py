@@ -75,7 +75,7 @@ class ClassSubjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClassSubject
-        fields = ['school', 'class_room', 'name', 'elective_or_core', 'subjects', 'lessons_per_week']
+        fields = ['school', 'class_room', 'name', 'elective_or_core', 'subjects', 'lessons_per_week','multi_block_lessons']
 
     def create(self, validated_data):
         subjects_data = validated_data.pop('subjects')
@@ -157,7 +157,7 @@ class ClassSubjectDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClassSubject
-        fields = ['id', 'name', 'lessons_per_week', 'is_elective', 'elective_group', 'options', 'teacher','special_rooms']
+        fields = ['id', 'name', 'lessons_per_week', 'is_elective', 'elective_group', 'options', 'teacher','special_rooms','multi_block_lessons']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

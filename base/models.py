@@ -177,6 +177,7 @@ class UserConstraintSettings(models.Model):
     elective_group_timeslot = models.BooleanField(default=True)
     ensure_teacher_assigned = models.BooleanField(default=True)
     ensure_timeslot_assigned = models.BooleanField(default=True)
+    consecutive_multi_block_lessons = models.BooleanField(default=False)
 
     # Soft constraints
     tutor_lesson_load = models.BooleanField(default=True)
@@ -476,6 +477,8 @@ class ClassSubject(models.Model):
     name = models.CharField(max_length=255)
     subjects = models.ManyToManyField(Subject, through='ClassSubjectSubject', related_name="class_subjects")
     lessons_per_week = models.IntegerField(default=1)
+    multi_block_lessons = models.PositiveIntegerField(default=1)  # New field
+
     elective_or_core = models.BooleanField(default=False)
     elective_group = models.ForeignKey(ElectiveGroup, related_name="class_subjects", null=True, blank=True, on_delete=models.SET_NULL)
     class_room=models.ForeignKey(Classroom,on_delete=models.CASCADE,related_name="class_subjects",blank=False)
@@ -515,7 +518,11 @@ class ClassSubject(models.Model):
         super().save(*args, **kwargs)
 
     def clean(self):
-        
+        if self.lessons_per_week % self.multi_block_lessons != 0:
+            raise ValidationError('lessons_per_week must be divisible by multi_block_lessons.')
+
+        if self.multi_block_lessons > self.lessons_per_week:
+            raise ValidationError('multi_block_lessons must be less than or equal to lessons_per_week.')
         if self.elective_or_core and self.elective_group:
             # Check if there's already a class subject with the same elective group in this classroom
             existing = ClassSubject.objects.filter(

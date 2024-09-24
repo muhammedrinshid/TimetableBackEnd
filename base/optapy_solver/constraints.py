@@ -27,6 +27,8 @@ def dynamic_constraint_provider(user_settings):
             constraints.append(ensure_teacher_assigned(constraint_factory))
         if user_settings.ensure_timeslot_assigned:
             constraints.append(ensure_timeslot_assigned(constraint_factory))
+        if user_settings.consecutive_multi_block_lessons:
+            constraints.append(consecutive_multi_block_lessons(constraint_factory))
 
         # Soft constraints
         if user_settings.tutor_lesson_load:
@@ -123,7 +125,30 @@ def elective_group_timeslot_constraint(constraint_factory: ConstraintFactory):
         .filter(lambda lesson1, lesson2: lesson1.elective is not None) \
         .penalize("Elective group timeslot mismatch", HardSoftScore.ONE_HARD,
                   lambda lesson1, lesson2: 1 if lesson1.timeslot != lesson2.timeslot else 0)
+        
+        
+        
+        
+        
+        
+        
+        
+        
+def consecutive_multi_block_lessons(constraint_factory: ConstraintFactory):
+    return constraint_factory.for_each(Lesson) \
+        .filter(lambda lesson: lesson.multi_block_lessons > 1) \
+        .join(Lesson,
+              Joiners.equal(lambda lesson: lesson.subject),
+              Joiners.equal(lambda lesson: lesson.class_sections),
+              Joiners.equal(lambda lesson: lesson.timeslot.day_of_week)) \
+        .groupBy(lambda lesson1, lesson2: (lesson1.subject, lesson1.class_sections, lesson1.timeslot.day_of_week),
+                 ConstraintCollectors.toList(lambda lesson1, lesson2: lesson1.timeslot.period)) \
+        .filter(lambda key, periods: len(periods) == key[0].multi_block_lessons and not are_consecutive(periods)) \
+        .penalize("Non-consecutive multi-block lessons", HardSoftScore.ONE_HARD)
 
+def are_consecutive(periods):
+    sorted_periods = sorted(periods)
+    return all(sorted_periods[i] + 1 == sorted_periods[i+1] for i in range(len(sorted_periods) - 1))
 # Soft constraints
 
 
@@ -177,7 +202,7 @@ def avoid_teacher_consecutive_periods_overlapping_class(constraint_factory: Cons
               Joiners.equal(lambda lesson: lesson.timeslot.day_of_week),
               Joiners.less_than(lambda lesson: lesson.id)) \
         .filter(lambda lesson1, lesson2: 
-                lesson2.timeslot.period - lesson1.timeslot.period == 1 and
+                lesson2.timeslot.period - lesson1.timeslot.period == 1 and lesson1.multi_block_lessons==1 and lesson2.multi_block_lessons==1 and 
                 any(section in lesson2.class_sections for section in lesson1.class_sections)) \
         .penalize("Avoid teacher consecutive periods with overlapping classes", HardSoftScore.ofSoft(200))
 

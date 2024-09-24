@@ -101,13 +101,16 @@ def get_all_elective_group_of_user(user):
         first_class_subject = group.class_subjects.first()
         elective_subject_name=""
         lessons_per_week=0
+        multi_block_lessons=1
         if first_class_subject:
             elective_subject_name = first_class_subject.name
             lessons_per_week = first_class_subject.lessons_per_week
+            multi_block_lessons=first_class_subject.multi_block_lessons
         result.append({
             "grp_id": str(group.id),
             "subjectDistributionData": dict(subject_distribution),
             "lessons_per_week":lessons_per_week,
+            'multi_block_lessons':multi_block_lessons,
             "elective_subject_name":elective_subject_name,
             "prefered_rooms_for_overflow":group.preferred_rooms.all()
         })
@@ -131,6 +134,7 @@ def create_elective_lesson_data(input_data):
         grp_id = group['grp_id']
         elective_subject_name = group['elective_subject_name']
         lessons_per_week = group['lessons_per_week']
+        multi_block_lessons = group['multi_block_lessons']
         prefered_rooms_for_overflow = group['prefered_rooms_for_overflow'].values_list('id', flat=True)
 
         # Extract unique classroom IDs
@@ -177,7 +181,8 @@ def create_elective_lesson_data(input_data):
                                               for student in room_data['students']},
                     'lessons_per_week': lessons_per_week,
                     'elective_subject_name': elective_subject_name,
-                    'available_rooms_ids':available_rooms_ids
+                    'available_rooms_ids':available_rooms_ids,
+                    'multi_block_lessons':multi_block_lessons,
                 }
                 result.append(lesson_data)
     
@@ -271,7 +276,7 @@ def create_elective_lesson_ojbects(data, school):
                 elective_subject_name=elective_subject_name,
                 is_elective=True,
                 grade_level=grade_obj,
-
+                multi_block_lessons=item['multi_block_lessons'],
                 students_distribution=item['students_distribution']
             )
             lessons.append(lesson)
@@ -322,6 +327,7 @@ def create_core_lesson_ojbects(school):
                                 available_rooms=available_rooms,
                                 lesson_no=lesson_no,
                                 elective_subject_name=class_subject.name,
+                                multi_block_lessons=class_subject.multi_block_lessons,
                                 grade_level=grade_obj
 
                             )
