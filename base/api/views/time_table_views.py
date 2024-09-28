@@ -15,9 +15,11 @@ from rest_framework.response import Response
 from ...models import  Teacher, Subject, Room,Classroom,Standard
 from ..serializer.time_table_serializer import TeacherDayTimetableSerializer,StudentWeekTimetableSerializer,StudentDayTimetableSerializer,WholeTeacherWeekTimetableSerializer,TeacherWeekTimetableSerializer,ClassroomWeekTimetableSerializer
 from django.shortcuts import get_object_or_404
-import re
-
-
+from django.http import HttpResponse
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
 
 
 
@@ -440,7 +442,6 @@ def get_whole_teacher_week_timetable(request, pk):
     except Timetable.DoesNotExist:
         return Response({"error": "Timetable not found"}, status=404)
     except Exception as e:
-        logging.error(e)
         return Response({"error": "Internal Server Error"}, status=500)
     
     # Get working days for the user
@@ -680,6 +681,179 @@ def get_teacher_week_timetable(request,pk):
 
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def download_classroom_timetable(request, pk):
+    user = request.user
+    timetable = get_object_or_404(Timetable, school=user, is_default=True)
 
+    try:
+        classroom = Classroom.objects.get(id=pk, school=user)
+        classsection = ClassSection.objects.get(classroom=classroom, timetable=timetable)
+    except Classroom.DoesNotExist:
+        return Response({'error': 'No classroom found for this school.'}, status=404)
+    except ClassSection.DoesNotExist:
+        return Response({'error': 'No classroom found for this timetable.'}, status=422)
 
+    working_days = user.working_days
+    day_timetable = []
 
+    for day_code in working_days:
+        day_lessons = Lesson.objects.filter(
+            timetable=timetable,
+            timeslot__day_of_week=day_code,
+            class_sections__in=[classsection]
+        ).select_related(
+            'course', 'allotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
+        )
+        
+        sessions = defaultdict(list)
+        for lesson in day_lessons:
+            sessions[lesson.timeslot.period - 1].append(lesson)
+
+        formatted_sessions = [sessions[i] for i in range(timetable.number_of_lessons)]
+
+        day_timetable.append({
+            'day': day_code,
+            'sessions': formatted_sessions
+        })
+
+    serializer = ClassroomWeekTimetableSerializer(day_timetable, many=True, context={'class_section': classsection})
+    timetable_data = serializer.data
+
+    # Create a new workbook and select the active sheet
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{classroom.standard.short_name}-{classroom.division} Timetable"
+
+    # Define styles
+    header_fill = PatternFill(start_color="4285F4", end_color="4285F4", fill_type="solid")
+    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    bold_font = Font(bold=True, size=12)
+    normal_font = Font(size=11)
+    elective_fill = PatternFill(start_color="FFFACD", end_color="FFFACD", fill_type="solid")  # light yellow
+    core_fill = PatternFill(start_color="E0FFFF", end_color="E0FFFF", fill_type="solid")  # light cyan
+
+    # Write headers
+    headers = ['Day'] + [f'Session {i+1}' for i in range(len(timetable_data[0]['sessions']))]
+    for col, header in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = Font(color="FFFFFF", bold=True, size=14)
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = border
+
+    # Write timetable data
+    for row, day_data in enumerate(timetable_data, start=2):
+        day_cell = ws.cell(row=row, column=1, value=day_data['day'])
+        day_cell.border = border
+        day_cell.font = Font(bold=True, size=12)
+        day_cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        for col, session in enumerate(day_data['sessions'], start=2):
+            if session:
+                subject = session['name']
+                session_type = session['type']
+                for distribution in session['class_distribution']:
+                    teacher = distribution['teacher']['name']
+                    room = f"{distribution['room']['name']} ({distribution['room']['number']})"
+
+                    # Style elective vs. core subjects differently
+                    if session_type == 'Elective':
+                        students = distribution['number_of_students_from_this_class']
+                        session_info = f"Subject: {subject} (Elective)\nTeacher: {teacher}\nRoom: {room}\nStudents: {students}"
+                        cell_fill = elective_fill
+                    else:
+                        session_info = f"Subject: {subject} (Core)\nTeacher: {teacher}\nRoom: {room}"
+                        cell_fill = core_fill
+
+                    # Create and style the cell for this session
+                    cell = ws.cell(row=row, column=col, value=f"\n{session_info}\n")
+                    cell.alignment = Alignment(wrap_text=True, horizontal='center', vertical='center')
+                    cell.border = border
+                    cell.fill = cell_fill
+
+                    # Apply different styles to different parts of the content
+                    lines = cell.value.split('\n')
+                    for i, line in enumerate(lines):
+                        if line.startswith('Subject:'):
+                            lines[i] = f"$BOLD_BLUE${line}$ENDBOLD_BLUE$"
+                        elif line.startswith('Teacher:'):
+                            lines[i] = f"$BOLD_GREEN${line}$ENDBOLD_GREEN$"
+                        elif line.startswith('Room:'):
+                            lines[i] = f"$RED${line}$ENDRED$"
+                        elif line.startswith('Students:'):
+                            lines[i] = f"$INDIGO${line}$ENDINDIGO$"
+                    
+                    cell.value = "\n".join(lines)
+
+    # Adjust column widths
+    for col in range(1, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 30  # Increased width for better spacing
+
+    # Adjust row height to fit content
+    for row in range(1, len(timetable_data) + 2):
+        ws.row_dimensions[row].height = 100  # Increased height for better spacing
+
+    # Apply rich text formatting
+    for row in ws.iter_rows(min_row=2, max_row=len(timetable_data) + 1, min_col=2):
+        for cell in row:
+            if cell.value:
+                parts = []
+                current_text = ""
+                current_format = None
+                for part in cell.value.split('$'):
+                    if part == 'BOLD_BLUE':
+                        if current_text:
+                            parts.append((current_text, current_format))
+                        current_format = Font(bold=True, size=12, color="000080")
+                        current_text = ""
+                    elif part == 'ENDBOLD_BLUE':
+                        parts.append((current_text, current_format))
+                        current_format = None
+                        current_text = ""
+                    elif part == 'BOLD_GREEN':
+                        if current_text:
+                            parts.append((current_text, current_format))
+                        current_format = Font(bold=True, size=11, color="006400")
+                        current_text = ""
+                    elif part == 'ENDBOLD_GREEN':
+                        parts.append((current_text, current_format))
+                        current_format = None
+                        current_text = ""
+                    elif part == 'RED':
+                        if current_text:
+                            parts.append((current_text, current_format))
+                        current_format = Font(size=11, color="8B0000")
+                        current_text = ""
+                    elif part == 'ENDRED':
+                        parts.append((current_text, current_format))
+                        current_format = None
+                        current_text = ""
+                    elif part == 'INDIGO':
+                        if current_text:
+                            parts.append((current_text, current_format))
+                        current_format = Font(size=11, color="4B0082")
+                        current_text = ""
+                    elif part == 'ENDINDIGO':
+                        parts.append((current_text, current_format))
+                        current_format = None
+                        current_text = ""
+                    else:
+                        current_text += part
+                if current_text:
+                    parts.append((current_text, current_format))
+                
+                cell.value = parts[0][0]
+                cell.font = parts[0][1] or Font(size=11)
+                for text, font in parts[1:]:
+                    if font:
+                        cell.font = font
+                    cell.value += text
+
+    # Create the HTTP response with the Excel file
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="{classroom.standard.short_name}-{classroom.division}_timetable.xlsx"'
+    wb.save(response)
+
+    return response

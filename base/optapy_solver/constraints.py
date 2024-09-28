@@ -7,7 +7,7 @@ from optapy.types import Constraint, ConstraintCollectors
 
 
 
-def dynamic_constraint_provider(user_settings):
+def dynamic_constraint_provider(user_settings,user):
     @constraint_provider
     def define_constraints(constraint_factory: ConstraintFactory):
         constraints = []
@@ -17,6 +17,7 @@ def dynamic_constraint_provider(user_settings):
             room_conflict(constraint_factory),
             teacher_conflict(constraint_factory),
             student_group_conflict(constraint_factory),
+            ensure_tutor_daily_working_period(constraint_factory),
         ])
 
         # Changeable constraints
@@ -27,14 +28,16 @@ def dynamic_constraint_provider(user_settings):
             constraints.append(ensure_teacher_assigned(constraint_factory))
         if user_settings.ensure_timeslot_assigned:
             constraints.append(ensure_timeslot_assigned(constraint_factory))
-        if user_settings.consecutive_multi_block_lessons:
-            constraints.append(consecutive_multi_block_lessons(constraint_factory))
+        # if user_settings.consecutive_multi_block_lessons:
+        #     constraints.append(consecutive_multi_block_lessons(constraint_factory))
 
         # Soft constraints
+        if user_settings.tutor_free_period_constraint:
+            constraints.append(tutor_free_period_constraint(constraint_factory,user=user))
         if user_settings.tutor_lesson_load:
             constraints.append(tutor_lesson_load(constraint_factory))
         if user_settings.daily_lesson_limit:
-            constraints.append(daily_lesson_limit(constraint_factory))
+            constraints.append(daily_lesson_limit(constraint_factory,days_per_week=len(user.working_days)))
         if user_settings.prefer_consistent_teacher_for_subject:
             constraints.append(prefer_consistent_teacher_for_subject(constraint_factory))
         if user_settings.prefer_subject_once_per_day:
@@ -54,31 +57,6 @@ def dynamic_constraint_provider(user_settings):
 
 
 
-
-
-# @constraint_provider
-# def define_constraints(constraint_factory: ConstraintFactory):
-#     return [
-#         # Hard constraints
-#         room_conflict(constraint_factory),
-#         teacher_conflict(constraint_factory),
-#         student_group_conflict(constraint_factory),
-#         elective_group_timeslot_constraint(constraint_factory),
-#         ensure_teacher_assigned(constraint_factory),
-#         ensure_timeslot_assigned(constraint_factory),
-        
-#         # Soft constraints (ordered by priority)
-#         tutor_lesson_load(constraint_factory),
-#         daily_lesson_limit(constraint_factory),
-#         prefer_consistent_teacher_for_subject(constraint_factory),
-#         prefer_subject_once_per_day(constraint_factory),
-#         avoid_teacher_consecutive_periods_overlapping_class(constraint_factory),
-#         avoid_continuous_subjects(constraint_factory),
-#         avoid_continuous_teaching(constraint_factory),
-#         avoid_consecutive_elective_lessons(constraint_factory),
-#     ]
-
-# Hard constraints
 
 def ensure_teacher_assigned(constraint_factory: ConstraintFactory):
     return constraint_factory.for_each(Lesson) \
@@ -114,7 +92,7 @@ def student_group_conflict(constraint_factory: ConstraintFactory):
         .filter(lambda lesson1, lesson2: 
                 (any(section in lesson2.class_sections for section in lesson1.class_sections) and
                  (lesson1.elective is None or lesson2.elective is None or lesson1.elective != lesson2.elective))) \
-        .penalize("Student group conflict", HardSoftScore.ONE_HARD)
+        .penalize("Student group conflict", HardSoftScore.ofHard(1))
 
 def elective_group_timeslot_constraint(constraint_factory: ConstraintFactory):
     return constraint_factory.for_each(Lesson) \
@@ -133,38 +111,34 @@ def elective_group_timeslot_constraint(constraint_factory: ConstraintFactory):
         
         
         
-        
-def consecutive_multi_block_lessons(constraint_factory: ConstraintFactory):
-    return constraint_factory.for_each(Lesson) \
-        .filter(lambda lesson: lesson.multi_block_lessons > 1) \
-        .join(Lesson,
-              Joiners.equal(lambda lesson: lesson.subject),
-              Joiners.equal(lambda lesson: lesson.class_sections),
-              Joiners.equal(lambda lesson: lesson.timeslot.day_of_week)) \
-        .groupBy(lambda lesson1, lesson2: (lesson1.subject, lesson1.class_sections, lesson1.timeslot.day_of_week),
-                 ConstraintCollectors.toList(lambda lesson1, lesson2: lesson1.timeslot.period)) \
-        .filter(lambda key, periods: len(periods) == key[0].multi_block_lessons and not are_consecutive(periods)) \
-        .penalize("Non-consecutive multi-block lessons", HardSoftScore.ONE_HARD)
+# def consecutive_multi_block_lessons(constraint_factory: ConstraintFactory):
+#     return constraint_factory.for_each(Lesson) \
+#         .filter(lambda lesson: lesson.multi_block_lessons > 1) \
+#         .join(Lesson,
+#               Joiners.equal(lambda lesson: (lesson.subject, lesson.class_sections)),
+#               Joiners.equal(lambda lesson: lesson.timeslot.day_of_week),
+#               Joiners.lessThan(lambda lesson: lesson.timeslot.period)) \
+#         .filter(lambda lesson1, lesson2:
+#                 lesson2.timeslot.period - lesson1.timeslot.period != 1) \
+#         .penalize("Non-consecutive multi-block lessons", HardSoftScore.ONE_HARD)
 
-def are_consecutive(periods):
-    sorted_periods = sorted(periods)
-    return all(sorted_periods[i] + 1 == sorted_periods[i+1] for i in range(len(sorted_periods) - 1))
-# Soft constraints
-
-
-def daily_lesson_limit(constraint_factory: ConstraintFactory) -> Constraint:
+def daily_lesson_limit(constraint_factory: ConstraintFactory, days_per_week: int = 6) -> Constraint:
     return constraint_factory.for_each(Tutor) \
         .join(Lesson, Joiners.equal(lambda tutor: tutor, lambda lesson: lesson.allotted_teacher)) \
         .group_by(
             lambda tutor, lesson: (tutor, lesson.timeslot.day_of_week),
             ConstraintCollectors.countBi()
         ) \
-        .filter(lambda tutor_day, lesson_count: lesson_count > tutor_day[0].max_lessons_per_week / 5) \
+        .filter(lambda tutor_day, lesson_count: 
+                lesson_count > (tutor_day[0].max_lessons_per_week / days_per_week)) \
         .penalize(
             "Daily lesson limit", 
-            HardSoftScore.ofSoft(800),
-            lambda tutor_day, lesson_count: lesson_count - (tutor_day[0].max_lessons_per_week / 5)
+            HardSoftScore.ofSoft(2000),  # Lower score
+            lambda tutor_day, lesson_count: 
+                lesson_count - (tutor_day[0].max_lessons_per_week / days_per_week)
         )
+
+
 def tutor_lesson_load(constraint_factory: ConstraintFactory) -> Constraint:
     return constraint_factory.for_each(Tutor) \
         .join(Lesson, Joiners.equal(lambda tutor: tutor, lambda lesson: lesson.get_allotted_teacher())) \
@@ -193,39 +167,8 @@ def prefer_subject_once_per_day(constraint_factory: ConstraintFactory):
               Joiners.less_than(lambda lesson: lesson.id)) \
         .filter(lambda lesson1, lesson2: 
                 any(section in lesson2.class_sections for section in lesson1.class_sections)) \
-        .penalize("Prefer subject only once per day per class", HardSoftScore.ofSoft(400))
+        .penalize("Prefer subject only once per day per class", HardSoftScore.ofSoft(300))
 
-def avoid_teacher_consecutive_periods_overlapping_class(constraint_factory: ConstraintFactory):
-    return constraint_factory.for_each(Lesson) \
-        .join(Lesson,
-              Joiners.equal(lambda lesson: lesson.allotted_teacher),
-              Joiners.equal(lambda lesson: lesson.timeslot.day_of_week),
-              Joiners.less_than(lambda lesson: lesson.id)) \
-        .filter(lambda lesson1, lesson2: 
-                lesson2.timeslot.period - lesson1.timeslot.period == 1 and lesson1.multi_block_lessons==1 and lesson2.multi_block_lessons==1 and 
-                any(section in lesson2.class_sections for section in lesson1.class_sections)) \
-        .penalize("Avoid teacher consecutive periods with overlapping classes", HardSoftScore.ofSoft(200))
-
-def avoid_continuous_subjects(constraint_factory: ConstraintFactory):
-    return constraint_factory.for_each(Lesson) \
-        .join(Lesson,
-              Joiners.equal(lambda lesson: lesson.subject),
-              Joiners.equal(lambda lesson: lesson.class_sections),
-              Joiners.equal(lambda lesson: lesson.timeslot.day_of_week),
-              Joiners.less_than(lambda lesson: lesson.id)) \
-        .filter(lambda lesson1, lesson2: 
-                abs(lesson1.timeslot.period - lesson2.timeslot.period) == 1) \
-        .penalize("Avoid continuous subjects", HardSoftScore.ofSoft(100))
-
-def avoid_continuous_teaching(constraint_factory: ConstraintFactory):
-    return constraint_factory.for_each(Lesson) \
-        .join(Lesson,
-              Joiners.equal(lambda lesson: lesson.allotted_teacher),
-              Joiners.equal(lambda lesson: lesson.timeslot.day_of_week),
-              Joiners.less_than(lambda lesson: lesson.id)) \
-        .filter(lambda lesson1, lesson2: 
-                abs(lesson1.timeslot.period - lesson2.timeslot.period) == 1) \
-        .penalize("Avoid continuous teaching", HardSoftScore.ofSoft(50))
 
 def avoid_consecutive_elective_lessons(constraint_factory: ConstraintFactory):
     return constraint_factory.for_each(Lesson) \
@@ -236,4 +179,58 @@ def avoid_consecutive_elective_lessons(constraint_factory: ConstraintFactory):
         .filter(lambda lesson1, lesson2: 
                 lesson1.is_elective and lesson2.is_elective and
                 abs(lesson1.timeslot.period - lesson2.timeslot.period) == 1) \
-        .penalize("Avoid consecutive elective lessons", HardSoftScore.ofSoft(25))
+        .penalize("Avoid consecutive elective lessons", HardSoftScore.ofSoft(200))
+        
+        
+def avoid_teacher_consecutive_periods_overlapping_class(constraint_factory: ConstraintFactory):
+    return constraint_factory.for_each(Lesson) \
+        .join(Lesson,
+              Joiners.equal(lambda lesson: lesson.allotted_teacher),
+              Joiners.equal(lambda lesson: lesson.timeslot.day_of_week),
+              Joiners.less_than(lambda lesson: lesson.id)) \
+        .filter(lambda lesson1, lesson2: 
+                lesson2.timeslot.period - lesson1.timeslot.period == 1 and lesson1.multi_block_lessons==1 and lesson2.multi_block_lessons==1 and 
+                any(section in lesson2.class_sections for section in lesson1.class_sections)) \
+        .penalize("Avoid teacher consecutive periods with overlapping classes", HardSoftScore.ofSoft(100))
+        
+             
+def avoid_continuous_subjects(constraint_factory: ConstraintFactory):
+    return constraint_factory.for_each(Lesson) \
+        .join(Lesson,
+              Joiners.equal(lambda lesson: lesson.subject),
+              Joiners.equal(lambda lesson: lesson.class_sections),
+              Joiners.equal(lambda lesson: lesson.timeslot.day_of_week),
+              Joiners.less_than(lambda lesson: lesson.id)) \
+        .filter(lambda lesson1, lesson2: 
+                abs(lesson1.timeslot.period - lesson2.timeslot.period) == 1) \
+        .penalize("Avoid continuous subjects", HardSoftScore.ofSoft(300))
+
+def avoid_continuous_teaching(constraint_factory: ConstraintFactory):
+    return constraint_factory.for_each(Lesson) \
+        .join(Lesson,
+              Joiners.equal(lambda lesson: lesson.allotted_teacher),
+              Joiners.equal(lambda lesson: lesson.timeslot.day_of_week),
+              Joiners.less_than(lambda lesson: lesson.id)) \
+        .filter(lambda lesson1, lesson2: 
+                abs(lesson1.timeslot.period - lesson2.timeslot.period) == 1) \
+        .penalize("Avoid continuous teaching", HardSoftScore.ofSoft(25))
+
+   
+def tutor_free_period_constraint(constraint_factory: ConstraintFactory,user):
+    periods_per_day=user.teaching_slots
+    return constraint_factory.forEach(Tutor) \
+        .join(Lesson,
+              Joiners.equal(lambda tutor: tutor, lambda lesson: lesson.allotted_teacher)) \
+        .groupBy(lambda tutor, lesson: tutor,
+                 ConstraintCollectors.countDistinct(lambda tutor, lesson: (lesson.timeslot.day_of_week, lesson.timeslot.period))) \
+        .filter(lambda tutor, lesson_count: lesson_count == periods_per_day) \
+        .penalize("Tutor should have at least one free period per day", HardSoftScore.ofSoft(700))
+
+def ensure_tutor_daily_working_period(constraint_factory: ConstraintFactory):
+    return constraint_factory.forEach(Tutor) \
+        .join(Lesson,
+              Joiners.equal(lambda tutor: tutor, lambda lesson: lesson.allotted_teacher)) \
+        .groupBy(lambda tutor, lesson: (tutor, lesson.timeslot.day_of_week),
+                 ConstraintCollectors.countBi()) \
+        .filter(lambda tutor_day, lesson_count: lesson_count == 0) \
+        .penalize("Tutor should have at least one working period per day", HardSoftScore.ofSoft(500))

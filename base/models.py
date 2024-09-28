@@ -180,6 +180,7 @@ class UserConstraintSettings(models.Model):
     consecutive_multi_block_lessons = models.BooleanField(default=False)
 
     # Soft constraints
+    tutor_free_period_constraint= models.BooleanField(default=True)
     tutor_lesson_load = models.BooleanField(default=True)
     daily_lesson_limit = models.BooleanField(default=True)
     prefer_consistent_teacher_for_subject = models.BooleanField(default=True)

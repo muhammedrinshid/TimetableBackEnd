@@ -18,4 +18,5 @@ urlpatterns = [
                 path('student-view-day/<str:day_of_week>/',time_table_views.get_student_single_day_timetable , name='student_day_timetable'),
                 path('default-student-view-week/', time_table_views.get_whole_student_default_week_timetable, name='default_student_week_timetable'),
                 path('student-view-week/<str:pk>/', time_table_views.get_whole_student_week_timetable, name='student_week_timetable'),
+                path('download-classroom-timetable/<str:pk>/', time_table_views.download_classroom_timetable, name='download_classroom_timetable'),
 ]

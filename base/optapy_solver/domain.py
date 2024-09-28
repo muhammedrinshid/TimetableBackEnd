@@ -187,6 +187,13 @@ class Tutor:
     @planning_id
     def get_id(self):
         return self.id
+    def __eq__(self, other):
+        if isinstance(other, Tutor):
+            return self.id == other.id
+        return False
+
+    def __hash__(self):
+        return hash(self.id)
 
 
     def __str__(self):
@@ -227,7 +234,7 @@ class Lesson:
         self.allotted_teacher = allotted_teacher
         self.allotted_room = allotted_room
         self.timeslot = timeslot
-
+        
     @planning_id
     def get_id(self):
         return self.id

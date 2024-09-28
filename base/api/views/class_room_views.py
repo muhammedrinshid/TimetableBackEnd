@@ -555,6 +555,7 @@ def update_class_subject(request, pk):
         class_subject = ClassSubject.objects.get(pk=pk)
     except ClassSubject.DoesNotExist:
         return Response({"error": "ClassSubject not found"}, status=status.HTTP_404_NOT_FOUND)
+    print(request.data)
     serializer = ClassSubjectUpdateSerializer(class_subject, data=request.data, partial=True)
     if serializer.is_valid():
         try:

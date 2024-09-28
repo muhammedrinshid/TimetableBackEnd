@@ -306,11 +306,12 @@ class ClassSubjectOptionSerializer(serializers.Serializer):
 class ClassSubjectUpdateSerializer(serializers.ModelSerializer):
     name = serializers.CharField(required=False)
     lessons_per_week = serializers.IntegerField(required=False)
+    multi_block_lessons = serializers.IntegerField()
     subjects = ClassSubjectOptionSerializer(many=True, write_only=True)
 
     class Meta:
         model = ClassSubject
-        fields = ['name', 'lessons_per_week', 'subjects']
+        fields = ['name', 'lessons_per_week', 'subjects','multi_block_lessons']
 
     def validate(self, data):
         if 'subjects' not in data:
@@ -340,6 +341,7 @@ class ClassSubjectUpdateSerializer(serializers.ModelSerializer):
                 instance.name = validated_data.get('name', instance.name)
             
             instance.lessons_per_week = validated_data.get('lessons_per_week', instance.lessons_per_week)
+            instance.multi_block_lessons = validated_data.get('multi_block_lessons', instance.multi_block_lessons)
             instance.save()
 
             # Delete all current options

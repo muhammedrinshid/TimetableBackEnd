@@ -35,7 +35,7 @@ def run_optimization(seconds,request):
     
     user_settings = UserConstraintSettings.objects.get(user=request.user)
 
-    constraint_provider = dynamic_constraint_provider(user_settings)
+    constraint_provider = dynamic_constraint_provider(user_settings,user=request.user)
 
     # Set the constraint provider
     solver_config.withConstraintProviderClass(constraint_provider)
