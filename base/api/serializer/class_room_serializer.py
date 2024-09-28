@@ -1,15 +1,15 @@
 from rest_framework import serializers
-from ...models import Standard, Classroom, Grade, User, Teacher, Subject, ClassSubject, ClassSubjectSubject,ElectiveGroup,Room
+from ...models import Grade, Classroom, Level, User, Teacher, Subject, ClassSubject, ClassSubjectSubject,ElectiveGroup,Room
 from django.db import transaction
 
 # Existing serializers
 
-class StandardSerializer(serializers.ModelSerializer):
-    grade = serializers.PrimaryKeyRelatedField(queryset=Grade.objects.all())
+class GradeSerializer(serializers.ModelSerializer):
+    level = serializers.PrimaryKeyRelatedField(queryset=Level.objects.all())
 
     class Meta:
-        model = Standard
-        fields = ['id', 'name', 'short_name', 'grade', 'created_at', 'updated_at']
+        model = Grade
+        fields = ['id', 'name', 'short_name', 'level', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 class ClassroomLightSerializer(serializers.ModelSerializer):
@@ -17,19 +17,19 @@ class ClassroomLightSerializer(serializers.ModelSerializer):
         model = Classroom
         fields = ['id', 'name', 'division', 'lessons_assigned_subjects']
 
-class StandardLightSerializer(serializers.ModelSerializer):
+class GradeLightSerializer(serializers.ModelSerializer):
     classrooms = ClassroomLightSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Standard
+        model = Grade
         fields = ['id', 'name', 'short_name', 'classrooms']
 
-class GradeLightSerializer(serializers.ModelSerializer):
-    standards = StandardLightSerializer(many=True, read_only=True)
+class LevelLightSerializer(serializers.ModelSerializer):
+    grades = GradeLightSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Grade
-        fields = ['id', 'name', 'short_name', 'standards']
+        model = Level
+        fields = ['id', 'name', 'short_name', 'grades']
 
 class TeacherSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
@@ -49,17 +49,17 @@ class SubjectWithTeachersSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'qualified_teachers']
 
 class ClassroomSerializer(serializers.ModelSerializer):
-    standard = serializers.PrimaryKeyRelatedField(queryset=Standard.objects.all())
+    grade = serializers.PrimaryKeyRelatedField(queryset=Grade.objects.all())
 
     class Meta:
         model = Classroom
-        fields = ['id', 'name', 'standard', 'number_of_students', 
+        fields = ['id', 'name', 'grade', 'number_of_students', 
                   'class_id', 'created_at', 'updated_at', 'division','room']
         read_only_fields = ['id', 'created_at', 'updated_at', 'class_id']
 
     def validate(self, data):
-        if 'standard' in data and not isinstance(data['standard'], Standard):
-            raise serializers.ValidationError("Invalid standard specified.")
+        if 'grade' in data and not isinstance(data['grade'], Grade):
+            raise serializers.ValidationError("Invalid grade specified.")
         return data
 
 class SubjectTeacherSerializer(serializers.Serializer):
@@ -171,8 +171,8 @@ class ClassSubjectDetailSerializer(serializers.ModelSerializer):
     
 
 class ClassroomDetailSerializer(serializers.ModelSerializer):
-    standard_name = serializers.CharField(source='standard.name')
-    standard_short_name = serializers.CharField(source='standard.short_name')
+    grade_name = serializers.CharField(source='grade.name')
+    grade_short_name = serializers.CharField(source='grade.short_name')
     room = RoomSerializer( allow_null=True)
     lessons_assigned_subjects = serializers.SerializerMethodField()
     subjects_assigned_teacher = serializers.SerializerMethodField()
@@ -181,7 +181,7 @@ class ClassroomDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Classroom
-        fields = ['id', 'name', 'standard_name','standard_short_name', 'division', 'room', 'lessons_assigned_subjects',
+        fields = ['id', 'name', 'grade_name','grade_short_name', 'division', 'room', 'lessons_assigned_subjects',
                   'subjects_assigned_teacher', 'total_subjects', 'subject_data','number_of_students']
 
     def get_lessons_assigned_subjects(self, obj):
@@ -199,7 +199,7 @@ class ClassroomDetailSerializer(serializers.ModelSerializer):
 class ElectiveGroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = ElectiveGroup
-        fields = ['id', 'name', 'standard']
+        fields = ['id', 'name', 'grade']
 
 class ClassSubjectUpdateSerializer(serializers.Serializer):
     classroom_id = serializers.UUIDField()
@@ -210,7 +210,7 @@ class ClassSubjectUpdateSerializer(serializers.Serializer):
 class ElectiveGroupCreateSerializer(serializers.Serializer):
     groupName = serializers.CharField()
     groupId = serializers.CharField(required=False)
-    standardId = serializers.UUIDField()
+    gradeId = serializers.UUIDField()
     divisions = ClassSubjectUpdateSerializer(many=True)
     preferredRooms = serializers.ListField(  
         child=serializers.UUIDField(),
@@ -241,7 +241,7 @@ class ElectiveGroupGetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ElectiveGroup
-        fields = ['id', 'name', 'standard', 'school', 'preferred_rooms']
+        fields = ['id', 'name', 'grade', 'school', 'preferred_rooms']
 
     def get_preferred_rooms(self, obj):
         return [str(room.id) for room in obj.preferred_rooms.all()]

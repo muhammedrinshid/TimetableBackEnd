@@ -219,9 +219,9 @@ class Subject(models.Model):
 
 
 
-class Grade(models.Model):
+class Level(models.Model):
     """
-    Grade model representing each grade in a school (e.g., Higher Secondary, High School, Upper Primary).
+    Level model representing each level in a school (e.g., Higher Secondary, High School, Upper Primary).
     It includes a UUID primary key, name, short name, school relationship,
     and timestamps for creation and last update.
     """
@@ -234,8 +234,8 @@ class Grade(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Grade"
-        verbose_name_plural = "Grades"
+        verbose_name = "Level"
+        verbose_name_plural = "Levels"
         ordering = ['name']
 
     def __str__(self):
@@ -248,7 +248,7 @@ class Teacher(models.Model):
     """
     Teacher model representing each teacher in a school with their details
     and qualified subjects. It includes a UUID primary key, relationships to school,
-    subjects, and grades, and fields for personal information, lesson constraints,
+    subjects, and levels, and fields for personal information, lesson constraints,
     a custom teacher ID, profile image, and timestamps for creation and last update.
     """
 
@@ -259,7 +259,7 @@ class Teacher(models.Model):
     email = models.EmailField(unique=False,blank=True,null=True)
     phone = models.CharField(max_length=20, blank=True, null=True)
     qualified_subjects = models.ManyToManyField('Subject', related_name='qualified_teachers')
-    grades = models.ManyToManyField('Grade', related_name='teachers')
+    levels = models.ManyToManyField('Level', related_name='teachers')
     min_lessons_per_week = models.PositiveIntegerField()
     max_lessons_per_week = models.PositiveIntegerField()
     teacher_id = models.CharField(max_length=20, unique=True, editable=True,null=True)
@@ -327,18 +327,18 @@ class Room(models.Model):
     def __str__(self):
         return self.name
 
-class Standard(models.Model):
+class Grade(models.Model):
     """
-    Standard model representing each standard in a school (e.g., LKG, UKG, 1st).
-    It includes a UUID primary key, name, short name, school and grade relationships,
+    Grade model representing each grade in a school (e.g., LKG, UKG, 1st).
+    It includes a UUID primary key, name, short name, school and level relationships,
     and timestamps for creation and last update.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
     short_name = models.CharField(max_length=20)
-    school = models.ForeignKey(User, related_name='standards', on_delete=models.CASCADE)
-    grade = models.ForeignKey(Grade, related_name='standards', on_delete=models.CASCADE)
+    school = models.ForeignKey(User, related_name='grades', on_delete=models.CASCADE)
+    level = models.ForeignKey(Level, related_name='grades', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -355,7 +355,7 @@ class ElectiveGroup(models.Model):
 
     id = models.UUIDField(default=uuid.uuid4, primary_key=True, unique=True)
     name = models.CharField(max_length=255)
-    standard=models.ForeignKey(Standard,on_delete=models.CASCADE,related_name="electives_groups",null=True)
+    grade=models.ForeignKey(Grade,on_delete=models.CASCADE,related_name="electives_groups",null=True)
     school = models.ForeignKey(User, related_name='electivegroups',on_delete=models.CASCADE)
     preferred_rooms=models.ManyToManyField(Room,related_name="electvie_grops")
     @property
@@ -396,14 +396,14 @@ class ElectiveGroup(models.Model):
       
 class Classroom(models.Model):
     """
-    Classroom model with fields for UUID primary key, name, standard, school,
+    Classroom model with fields for UUID primary key, name, grade, school,
     number of students, room number, class ID, creation and update timestamps,
     and division. Includes methods for subject count and allocation check.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
-    standard = models.ForeignKey(Standard, related_name='classrooms', on_delete=models.CASCADE)
+    grade = models.ForeignKey(Grade, related_name='classrooms', on_delete=models.CASCADE)
     school = models.ForeignKey(User, related_name='classrooms', on_delete=models.CASCADE)
     number_of_students = models.PositiveIntegerField(null=True, blank=True,default=0)
     class_id = models.CharField(max_length=20, unique=True, editable=True)
@@ -437,7 +437,7 @@ class Classroom(models.Model):
    
 
     def __str__(self):
-        return f'{self.standard} {self.name}'
+        return f'{self.grade} {self.name}'
     
     def save(self, *args, **kwargs):
         if not self.class_id:
@@ -452,7 +452,7 @@ class Classroom(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['standard', 'division'], name='unique_standard_division')
+            models.UniqueConstraint(fields=['grade', 'division'], name='unique_grade_division')
         ]
         verbose_name = "Classroom"
         verbose_name_plural = "Classrooms"

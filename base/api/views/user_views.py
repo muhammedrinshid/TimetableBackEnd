@@ -2,9 +2,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes,parser_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from ..serializer.user_serializer import UserSerializer,GradeSerializer,SubjectSerializer,UserConstraintSettingsSerializer
+from ..serializer.user_serializer import UserSerializer,LevelSerializer,SubjectSerializer,UserConstraintSettingsSerializer
 from django.shortcuts import get_object_or_404
-from ...models import User,Grade,Subject,UserConstraintSettings
+from ...models import User,Level,Subject,UserConstraintSettings
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 @api_view(['GET', 'PUT'])
@@ -46,11 +46,11 @@ def update_profile_image(request):
 
 @permission_classes([IsAuthenticated])
 @api_view(["PUT",'POST','GET','DELETE'])
-def grade_create_update(request,pk=None):
+def level_create_update(request,pk=None):
     
  
     if request.method =="POST":
-        serializer=GradeSerializer(data=request.data)
+        serializer=LevelSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(school=request.user)
             return Response(serializer.data,status=status.HTTP_201_CREATED)
@@ -59,44 +59,44 @@ def grade_create_update(request,pk=None):
         
         try:
            
-            grade=Grade.objects.get(id=pk)
-        except Grade.DoesNotExist:
+            level=Level.objects.get(id=pk)
+        except Level.DoesNotExist:
             return Response (status=status.HTTP_404_NOT_FOUND)
         
             
         
         # Check ownership
-        if grade.school != request.user: 
+        if level.school != request.user: 
             return Response({'error': 'You do not have permission to perform this action.'}, status=status.HTTP_403_FORBIDDEN)
         
-        serializer=GradeSerializer(grade,data=request.data)
+        serializer=LevelSerializer(level,data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors,status=status.HTTP_400_BAD_REQUEST)     
     elif request.method =='DELETE' and pk is not None:
         try:
-            grade =Grade.objects.get(id=pk)
-        except Grade.DoesNotExist:
+            level =Level.objects.get(id=pk)
+        except Level.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        if grade.school!=request.user:
+        if level.school!=request.user:
             return Response({'error': 'You do not have permission to perform this action.'}, status=status.HTTP_403_FORBIDDEN)
-        grade.delete()
+        level.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
                
 @permission_classes([IsAuthenticated])
 @api_view(["GET"])
-def grades(request):
+def levels(request):
     """
-    API view to retrieve a list of all grades associated with the authenticated user.
+    API view to retrieve a list of all levels associated with the authenticated user.
     """
     try:
         user = request.user
-        grades = Grade.objects.filter(school=user)
-        serializer = GradeSerializer(grades, many=True)
+        levels = Level.objects.filter(school=user)
+        serializer = LevelSerializer(levels, many=True)
         
-        if not grades.exists():
-            return Response({"detail": "No grades found for the current user."}, status=status.HTTP_200_OK)
+        if not levels.exists():
+            return Response({"detail": "No levels found for the current user."}, status=status.HTTP_200_OK)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
     

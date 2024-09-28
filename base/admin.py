@@ -4,14 +4,14 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.postgres.forms import SimpleArrayField
 from .models import User,Subject
 from .models import Teacher  # Replace with the correct import path for Teacher model
-from .models import Standard, ElectiveGroup, Classroom,Room
-from .time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection
+from .models import Grade, ElectiveGroup, Classroom,Room
+from .time_table_models import Timetable, GradeLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection
 
-@admin.register(Standard)
-class StandardAdmin(admin.ModelAdmin):
-    list_display = ('name', 'short_name', 'school', 'grade', 'created_at', 'updated_at')
+@admin.register(Grade)
+class GradeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'short_name', 'school', 'level', 'created_at', 'updated_at')
     search_fields = ('name', 'short_name')
-    list_filter = ('school', 'grade')
+    list_filter = ('school', 'level')
     ordering = ('name',)
 
 @admin.register(ElectiveGroup)
@@ -24,9 +24,9 @@ class ElectiveGroupAdmin(admin.ModelAdmin):
 
 @admin.register(Classroom)
 class ClassroomAdmin(admin.ModelAdmin):
-    list_display = ('name', 'standard', 'school', 'number_of_students', 'class_id', 'division', 'created_at', 'updated_at')
-    search_fields = ('name', 'standard__name', 'division')
-    list_filter = ('standard', 'school', 'division')
+    list_display = ('name', 'grade', 'school', 'number_of_students', 'class_id', 'division', 'created_at', 'updated_at')
+    search_fields = ('name', 'grade__name', 'division')
+    list_filter = ('grade', 'school', 'division')
     ordering = ('name',)
     readonly_fields = ('class_id',)
 
@@ -94,7 +94,7 @@ class SubjectAdmin(admin.ModelAdmin):
 @admin.register(Teacher)
 class TeacherAdmin(admin.ModelAdmin):
     list_display = ('name', 'surname', 'email', 'phone', 'teacher_id', 'created_at', 'updated_at')
-    list_filter = ('school', 'grades', 'qualified_subjects')
+    list_filter = ('school', 'levels', 'qualified_subjects')
     search_fields = ('name', 'surname', 'email', 'teacher_id')
     readonly_fields = ('created_at', 'updated_at')
 
@@ -103,7 +103,7 @@ class TeacherAdmin(admin.ModelAdmin):
             'fields': ('school', 'name', 'surname', 'email', 'phone', 'profile_image')
         }),
         ('Qualifications', {
-            'fields': ('qualified_subjects', 'grades')
+            'fields': ('qualified_subjects', 'levels')
         }),
         ('Lesson Constraints', {
             'fields': ('min_lessons_per_week', 'max_lessons_per_week')
@@ -131,15 +131,15 @@ admin.site.register(Room, RoomAdmin)
 admin.site.register(User, CustomUserAdmin)
 
 
-class StandardLevelAdmin(admin.ModelAdmin):
-    list_display = ('name', 'standard_id', 'timetable', 'school')
+class GradeLevelAdmin(admin.ModelAdmin):
+    list_display = ('name', 'grade_id', 'timetable', 'school')
     list_filter = ('timetable', 'school')
-    search_fields = ('name', 'standard_id', 'timetable__name', 'school__username')
+    search_fields = ('name', 'grade_id', 'timetable__name', 'school__username')
 
 class ClassSectionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'classroom_id', 'standard', 'division', 'timetable', 'school')
-    list_filter = ('standard', 'division', 'timetable', 'school')
-    search_fields = ('name', 'classroom_id', 'standard__name', 'timetable__name', 'school__username')
+    list_display = ('name', 'classroom_id', 'grade', 'division', 'timetable', 'school')
+    list_filter = ('grade', 'division', 'timetable', 'school')
+    search_fields = ('name', 'classroom_id', 'grade__name', 'timetable__name', 'school__username')
 
 class CourseAdmin(admin.ModelAdmin):
     list_display = ('name', 'get_subject_ids', 'timetable', 'school')
@@ -194,7 +194,7 @@ class LessonClassSectionAdmin(admin.ModelAdmin):
     list_filter = ('lesson', 'class_section')
 # Register the models with the admin site
 admin.site.register(Timetable, TimetableAdmin)
-admin.site.register(StandardLevel, StandardLevelAdmin)
+admin.site.register(GradeLevel, GradeLevelAdmin)
 admin.site.register(ClassSection, ClassSectionAdmin)
 admin.site.register(Course, CourseAdmin)
 admin.site.register(Tutor, TutorAdmin)

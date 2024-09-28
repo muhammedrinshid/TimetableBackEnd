@@ -50,10 +50,10 @@ class Timeslot:
 
 @problem_fact
 class ElectiveGrp:
-    def __init__(self, id, name, standard):
+    def __init__(self, id, name, grade):
         self.id = id
         self.name = name
-        self.standard = standard
+        self.grade = grade
 
     @planning_id
     def get_id(self):
@@ -66,36 +66,11 @@ class ElectiveGrpManager:
     _registry = {}
 
     @classmethod
-    def get_or_create(cls, id, name, standard):
+    def get_or_create(cls, id, name, grade):
         if id in cls._registry:
             return cls._registry[id]
         else:
-            new_instance = ElectiveGrp(id, name, standard)
-            cls._registry[id] = new_instance
-            return new_instance
-
-@problem_fact
-class StandardLevel:
-    def __init__(self, id, short_name):
-        self.id = id
-        self.short_name = short_name
-
-    @planning_id
-    def get_id(self):
-        return self.id
-
-    def __str__(self):
-        return f"standard={self.short_name}"
-
-class StandardLevelManager:
-    _registry = {}
-
-    @classmethod
-    def get_or_create(cls, id, short_name):
-        if id in cls._registry:
-            return cls._registry[id]
-        else:
-            new_instance = StandardLevel(id, short_name)
+            new_instance = ElectiveGrp(id, name, grade)
             cls._registry[id] = new_instance
             return new_instance
 
@@ -110,7 +85,7 @@ class GradeLevel:
         return self.id
 
     def __str__(self):
-        return f"standard={self.short_name}"
+        return f"grade={self.short_name}"
 
 class GradeLevelManager:
     _registry = {}
@@ -125,10 +100,35 @@ class GradeLevelManager:
             return new_instance
 
 @problem_fact
-class ClassSection():
-    def __init__(self, id, standard, division, name):
+class LevelLevel:
+    def __init__(self, id, short_name):
         self.id = id
-        self.standard = standard
+        self.short_name = short_name
+
+    @planning_id
+    def get_id(self):
+        return self.id
+
+    def __str__(self):
+        return f"grade={self.short_name}"
+
+class LevelLevelManager:
+    _registry = {}
+
+    @classmethod
+    def get_or_create(cls, id, short_name):
+        if id in cls._registry:
+            return cls._registry[id]
+        else:
+            new_instance = LevelLevel(id, short_name)
+            cls._registry[id] = new_instance
+            return new_instance
+
+@problem_fact
+class ClassSection():
+    def __init__(self, id, grade, division, name):
+        self.id = id
+        self.grade = grade
         self.division = division
         self.name = name
 
@@ -137,17 +137,17 @@ class ClassSection():
         return self.id
 
     def __str__(self):
-        return f"Classroom {self.standard.short_name} - {self.division}"
+        return f"Classroom {self.grade.short_name} - {self.division}"
 
 class ClassSectionManager:
     _registry = {}
 
     @classmethod
-    def get_or_create(cls, id, standard, division, name):
+    def get_or_create(cls, id, grade, division, name):
         if id in cls._registry:
             return cls._registry[id]
         else:
-            new_instance = ClassSection(id, standard, division, name)
+            new_instance = ClassSection(id, grade, division, name)
             cls._registry[id] = new_instance
             return new_instance
 
@@ -216,7 +216,7 @@ class TutorManager:
 
 @planning_entity
 class Lesson:
-    def __init__(self, id, subject, available_teachers, class_sections, lesson_no, available_rooms,grade_level,multi_block_lessons=1, is_elective=False, allotted_room=None, timeslot=None, allotted_teacher=None, elective=None, students_distribution=None, elective_subject_name=''):
+    def __init__(self, id, subject, available_teachers, class_sections, lesson_no, available_rooms,level_level,multi_block_lessons=1, is_elective=False, allotted_room=None, timeslot=None, allotted_teacher=None, elective=None, students_distribution=None, elective_subject_name=''):
         self.id = id
         self.subject = subject
         self.available_teachers = available_teachers
@@ -227,7 +227,7 @@ class Lesson:
         self.elective = elective
         self.students_distribution = students_distribution
         self.elective_subject_name = elective_subject_name
-        self.grade_level=grade_level
+        self.level_level=level_level
         self.multi_block_lessons=multi_block_lessons
         
         # Planning variables

@@ -1,5 +1,5 @@
 from .domain import TimeTable
-from .domain import Timeslot,Lesson,ClassSection,StandardLevelManager,TutorManager,CourseManager,ClassroomAssignmentManager,ClassSectionManager
+from .domain import Timeslot,Lesson,ClassSection,GradeLevelManager,TutorManager,CourseManager,ClassroomAssignmentManager,ClassSectionManager
 import uuid
 from optapy.constraint import ConstraintMatchTotal
 from base.models import UserConstraintSettings
@@ -70,7 +70,7 @@ def run_optimization(seconds,request):
     return solution
 
 def create_problem_from_django_models(user):
-    from ..models import User, Room, Grade, Standard, Classroom, ClassSubject, ClassSubjectSubject, Teacher
+    from ..models import User, Room, Level, Grade, Classroom, ClassSubject, ClassSubjectSubject, Teacher
     school = user 
     rooms = [ClassroomAssignmentManager.get_or_create(id=room.id,name= room.name,capacity=room.capacity,room_type=room.room_type,occupied=room.occupied) for room in Room.objects.filter(school=school)]
     tutors=[TutorManager.get_or_create(id=teacher.id,name=teacher.name,min_lessons_per_week=teacher.min_lessons_per_week,max_lessons_per_week=teacher.max_lessons_per_week) for teacher in Teacher.objects.filter(school=school)]

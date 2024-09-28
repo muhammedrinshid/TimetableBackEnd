@@ -5,7 +5,7 @@ from .models import User
 from django.dispatch import receiver
 from django.db.models.signals import post_save
 
-from .models import Classroom,Subject,Teacher,Room,Standard
+from .models import Classroom,Subject,Teacher,Room,Grade
 
 class Timetable(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -38,15 +38,15 @@ def set_default_timetable(sender, instance, created, **kwargs):
             instance.set_as_default()
             
             
-class StandardLevel(models.Model):
+class GradeLevel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    standard = models.ForeignKey(Standard,on_delete=models.SET_NULL,related_name='class_sectons',null=True)  # Changed to UUIDField and removed unique constraint
+    grade = models.ForeignKey(Grade,on_delete=models.SET_NULL,related_name='class_sectons',null=True)  # Changed to UUIDField and removed unique constraint
     name = models.CharField(max_length=50)
-    timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='standard_levels')
-    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='standard_levels')
+    timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='grade_levels')
+    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='grade_levels')
 
     # class Meta:
-        # unique_together = ('standard_id', 'timetable')  # Ensure uniqueness within a timetable
+        # unique_together = ('grade_id', 'timetable')  # Ensure uniqueness within a timetable
 
     def __str__(self):
         return self.name
@@ -54,7 +54,7 @@ class StandardLevel(models.Model):
 class ClassSection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     classroom = models.ForeignKey(Classroom,on_delete=models.SET_NULL,related_name='class_sectons',null=True)  # Changed to UUIDField and removed unique constraint
-    standard = models.ForeignKey(StandardLevel, on_delete=models.CASCADE)
+    grade = models.ForeignKey(GradeLevel, on_delete=models.CASCADE)
     division = models.CharField(max_length=10)
     name = models.CharField(max_length=100)
     timetable = models.ForeignKey(Timetable, on_delete=models.CASCADE, related_name='class_sections')
@@ -64,7 +64,7 @@ class ClassSection(models.Model):
         # unique_together = ('classroom_id', 'timetable')  # Ensure uniqueness within a timetable
 
     def __str__(self):
-        return f"{self.standard.name} - {self.division}"
+        return f"{self.grade.name} - {self.division}"
 
 class Course(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

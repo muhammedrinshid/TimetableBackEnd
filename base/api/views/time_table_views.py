@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from ...optapy_solver.solver import run_optimization
-from ...time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection
+from ...time_table_models import Timetable, GradeLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection
 from django.db import transaction
 
 from django.db.models import Prefetch
@@ -12,7 +12,7 @@ from collections import defaultdict
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from ...models import  Teacher, Subject, Room,Classroom,Standard
+from ...models import  Teacher, Subject, Room,Classroom,Grade
 from ..serializer.time_table_serializer import TeacherDayTimetableSerializer,StudentWeekTimetableSerializer,StudentDayTimetableSerializer,WholeTeacherWeekTimetableSerializer,TeacherWeekTimetableSerializer,ClassroomWeekTimetableSerializer
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
@@ -123,7 +123,7 @@ def save_optimization_results(user, solution,score,hard_score,soft_score):
                             defaults={
                                 'name': room_instance.name,
                                 'capacity': getattr(room_instance, 'capacity', 30),
-                                'room_type': getattr(room_instance, 'room_type', 'Standard'),
+                                'room_type': getattr(room_instance, 'room_type', 'Grade'),
                                 'occupied': getattr(room_instance, 'occupied', False)
                             }
                         )
@@ -159,19 +159,19 @@ def save_optimization_results(user, solution,score,hard_score,soft_score):
                 # Process ClassSection
                 for class_section in lesson.class_sections:
                     try:
-                        standard = class_section.standard
-                        if standard is None:
-                            raise ValueError("Class section standard is None")
-                        std_instance = Standard.objects.get(id=standard.id)
-                    except (Standard.DoesNotExist, AttributeError, ValueError) as e:
-                        print(f"Error processing standard: {e}")
+                        grade = class_section.grade
+                        if grade is None:
+                            raise ValueError("Class section grade is None")
+                        std_instance = Grade.objects.get(id=grade.id)
+                    except (Grade.DoesNotExist, AttributeError, ValueError) as e:
+                        print(f"Error processing grade: {e}")
                         continue
 
-                    standard_level, _ = StandardLevel.objects.get_or_create(
-                        name=class_section.standard.short_name,
+                    grade_level, _ = GradeLevel.objects.get_or_create(
+                        name=class_section.grade.short_name,
                         timetable=timetable,
                         school=user,
-                        standard=std_instance
+                        grade=std_instance
                     )
 
                     try:
@@ -185,7 +185,7 @@ def save_optimization_results(user, solution,score,hard_score,soft_score):
                         timetable=timetable,
                         school=user,
                         defaults={
-                            'standard': standard_level,
+                            'grade': grade_level,
                             'division': class_section.division,
                             'name': class_section.name
                         }
@@ -476,7 +476,7 @@ def get_student_day_timetable(user, timetable, day_of_week):
     class_sections = ClassSection.objects.filter(
         timetable=timetable
     ).select_related(
-        'classroom__standard', 'classroom__room'
+        'classroom__grade', 'classroom__room'
     ).prefetch_related(
         Prefetch(
             'lessons',
@@ -491,7 +491,7 @@ def get_student_day_timetable(user, timetable, day_of_week):
             to_attr='day_lessons'
         )
     ).order_by(
-        'classroom__standard__short_name', 
+        'classroom__grade__short_name', 
         'division'
     )
 
@@ -724,7 +724,7 @@ def download_classroom_timetable(request, pk):
     # Create a new workbook and select the active sheet
     wb = Workbook()
     ws = wb.active
-    ws.title = f"{classroom.standard.short_name}-{classroom.division} Timetable"
+    ws.title = f"{classroom.grade.short_name}-{classroom.division} Timetable"
 
     # Define styles
     header_fill = PatternFill(start_color="4285F4", end_color="4285F4", fill_type="solid")
@@ -853,7 +853,7 @@ def download_classroom_timetable(request, pk):
 
     # Create the HTTP response with the Excel file
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition'] = f'attachment; filename="{classroom.standard.short_name}-{classroom.division}_timetable.xlsx"'
+    response['Content-Disposition'] = f'attachment; filename="{classroom.grade.short_name}-{classroom.division}_timetable.xlsx"'
     wb.save(response)
 
     return response

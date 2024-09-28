@@ -1,11 +1,11 @@
 from rest_framework import serializers
-from ...models import User,Grade,Subject,UserConstraintSettings
+from ...models import User,Level,Subject,UserConstraintSettings
 
 
 
-class GradeSerializer(serializers.ModelSerializer):
+class LevelSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Grade
+        model = Level
         fields = ['name', 'short_name','id']
         
         
@@ -18,7 +18,7 @@ class SubjectSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     working_days = serializers.ListField(required=False)
     profile_image = serializers.ImageField(read_only=True)  # Changed to read-only
-    grades = GradeSerializer(many=True, read_only=True, source='grade_set')
+    levels = LevelSerializer(many=True, read_only=True, source='level_set')
 
     class Meta:
         model = User
@@ -28,7 +28,7 @@ class UserSerializer(serializers.ModelSerializer):
             'teaching_slots', 'average_students_allowed_in_a_class', 'period_name',
             'all_classes_subject_assigned_atleast_one_teacher',
             'all_classes_assigned_subjects', 
-            'grades'
+            'levels'
         ]
         read_only_fields = ['id', 'school_id', 'email', 'profile_image']
 

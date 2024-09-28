@@ -10,9 +10,9 @@ from rest_framework import status,serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from ...models import Standard, Classroom, Grade,Subject,Teacher,ClassSubject,ClassSubjectSubject,ElectiveGroup,Room
+from ...models import Grade, Classroom, Level,Subject,Teacher,ClassSubject,ClassSubjectSubject,ElectiveGroup,Room
 from rest_framework.decorators import api_view,permission_classes
-from ..serializer.class_room_serializer import StandardSerializer,ElectiveSubjectAddSerializer,ClassSubjectUpdateSerializer,RoomSerializer,ElectiveGroupGetSerializer,ElectiveGroupCreateSerializer, ClassroomSerializer,GradeLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
+from ..serializer.class_room_serializer import GradeSerializer,ElectiveSubjectAddSerializer,ClassSubjectUpdateSerializer,RoomSerializer,ElectiveGroupGetSerializer,ElectiveGroupCreateSerializer, ClassroomSerializer,LevelLightSerializer,SubjectWithTeachersSerializer,ClassSubjectSerializer,ClassroomDetailSerializer
 from django.db import transaction
 from django.db.models import Prefetch,Sum,Count
 from django.db import DatabaseError
@@ -52,13 +52,13 @@ def get_next_division_name(existing_divisions):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_user_grades_standards_classrooms(request):
+def get_user_levels_grades_classrooms(request):
     
-    grades = Grade.objects.filter(school=request.user).prefetch_related(
-        'standards',
-        'standards__classrooms'
+    levels = Level.objects.filter(school=request.user).prefetch_related(
+        'grades',
+        'grades__classrooms'
     )
-    serializer = GradeLightSerializer(grades, many=True)
+    serializer = LevelLightSerializer(levels, many=True)
     return Response(serializer.data)
 
 
@@ -67,17 +67,17 @@ def get_user_grades_standards_classrooms(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def add_new_division(request):
-    standard_id=request.data.get('standard_id')
+    grade_id=request.data.get('grade_id')
     
     try:
-        standard=Standard.objects.get(school=request.user,id=standard_id)
-    except Standard.DoesNotExist:
-        return Response({"error":"standard not found"},status=status.HTTP_404_NOT_FOUND)
-    existing_divisions=standard.classrooms.values_list("division",flat=True)
+        grade=Grade.objects.get(school=request.user,id=grade_id)
+    except Grade.DoesNotExist:
+        return Response({"error":"grade not found"},status=status.HTTP_404_NOT_FOUND)
+    existing_divisions=grade.classrooms.values_list("division",flat=True)
     new_division_name=get_next_division_name(existing_divisions)
     class_room_data={
         "name":f'Division {new_division_name}',
-        'standard':standard.id,
+        'grade':grade.id,
         'division': new_division_name,
 
         
@@ -96,16 +96,16 @@ def add_new_division(request):
 
 @api_view([ 'POST'])
 @permission_classes([IsAuthenticated])
-def create_standard_and_classrooms(request):
+def create_grade_and_classrooms(request):
 
     if request.method == 'POST':
-        # Step 1: Create Standard
+        # Step 1: Create Grade
         
         
-        standard_serializer = StandardSerializer(data=request.data)
+        grade_serializer = GradeSerializer(data=request.data)
 
-        if standard_serializer.is_valid():
-            standard = standard_serializer.save(school=request.user)
+        if grade_serializer.is_valid():
+            grade = grade_serializer.save(school=request.user)
             
             # Step 2: Create Classrooms
             number_of_divisions = int(request.data.get('number_of_divisions', 0))
@@ -116,7 +116,7 @@ def create_standard_and_classrooms(request):
                 division = chr(65 + i)  # A, B, C, ...
                 classroom_data = {
                     'name': f'Division {division}',
-                    'standard': standard.id,
+                    'grade': grade.id,
                     'school': request.user.id,
                     'division': division,
                 }
@@ -126,20 +126,20 @@ def create_standard_and_classrooms(request):
                     classroom = classroom_serializer.save(school=request.user)
                     classrooms.append(classroom_serializer.data)
                 else:
-                    # If any classroom creation fails, delete the standard and return error
-                    standard.delete()
+                    # If any classroom creation fails, delete the grade and return error
+                    grade.delete()
                     return Response(classroom_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
             # If all successful, return created data
             response_data = {
-                'standard': standard_serializer.data,
+                'grade': grade_serializer.data,
                 'classrooms': classrooms,
-                'grade_id': str(standard.grade.id),  
+                'level_id': str(grade.level.id),  
 
             }
             return Response(response_data, status=status.HTTP_201_CREATED)
         
-        return Response(standard_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(grade_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     
     
@@ -149,7 +149,7 @@ def classroom_instance_manager(request,pk=None):
     if request.method=='GET' and pk is not None:
         
         classroom = Classroom.objects.filter(pk=pk).select_related(
-            'standard', 'room'
+            'grade', 'room'
         ).prefetch_related(
             Prefetch('class_subjects', queryset=ClassSubject.objects.all().prefetch_related(
                 Prefetch('class_subject_subjects', queryset=ClassSubjectSubject.objects.all().select_related('subject').prefetch_related('assigned_teachers'))
@@ -200,7 +200,7 @@ def classroom_instance_manager(request,pk=None):
             try:
                 if room_data:
                     current_room=classroom.room
-                    room_name = f"room {classroom.standard.short_name} {classroom.name}"
+                    room_name = f"room {classroom.grade.short_name} {classroom.name}"
 
                     if current_room:
                         current_room.occupied=False
@@ -258,17 +258,17 @@ def classroom_instance_manager(request,pk=None):
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
-def standard_instance_manager(request,pk):
+def grade_instance_manager(request,pk):
     if request.method=='GET':
         
             pass
     elif request.method=="DELETE" and pk is not None:
         try:
             with transaction.atomic():
-                standard = Standard.objects.select_for_update().get(id=pk)
+                grade = Grade.objects.select_for_update().get(id=pk)
                 
                 # Check if the user has permission to delete the classroom
-                if standard.school != request.user:
+                if grade.school != request.user:
                     return Response(
                         {"error": 'You do not have permission to perform this action.'},
                         status=status.HTTP_403_FORBIDDEN
@@ -276,7 +276,7 @@ def standard_instance_manager(request,pk):
                 
                 # Perform any necessary cleanup or related object deletions here
                 
-                standard.delete()
+                grade.delete()
                 
                 return Response({"message": "Classroom deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
         
@@ -293,14 +293,14 @@ def standard_instance_manager(request,pk):
 def list_subjects_with_available_teachers(request,pk):
     if pk is not None:
         try:
-            grade=Grade.objects.get(id=pk)
-        except Grade.DoesNotExist:
-            return Response({"error": "Grade not found"}, status=404)
+            level=Level.objects.get(id=pk)
+        except Level.DoesNotExist:
+            return Response({"error": "Level not found"}, status=404)
         subjects=Subject.objects.filter(
             school=request.user,  ).prefetch_related(
                 Prefetch(
                     'qualified_teachers',
-                    queryset=Teacher.objects.filter(grades=grade.id),
+                    queryset=Teacher.objects.filter(levels=level.id),
                     to_attr='available_teachers'
                 )
             )
@@ -320,12 +320,12 @@ def assign_subjects_to_all_classrooms(request, pk):
     
     if pk is not None:
         try:
-            standard = Standard.objects.get(id=pk)
-        except Standard.DoesNotExist:
-            return Response({"error": "Standard not found"}, status=status.HTTP_404_NOT_FOUND)
+            grade = Grade.objects.get(id=pk)
+        except Grade.DoesNotExist:
+            return Response({"error": "Grade not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Step 1: Collect all classrooms from this standard using reverse relation
-        classrooms = standard.classrooms.all()
+        # Step 1: Collect all classrooms from this grade using reverse relation
+        classrooms = grade.classrooms.all()
 
     
         if request.method == 'POST':
@@ -358,7 +358,7 @@ def assign_subjects_to_single_classroom(request, pk):
         try:
             classroom = Classroom.objects.get(id=pk)
         except Classroom.DoesNotExist:
-            return Response({"error": "Standard not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Grade not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
     
@@ -395,10 +395,10 @@ def update_elective_group(request):
         logger.info(f"Validated data: {data}")
         
         try:
-            standard = Standard.objects.get(id=data['standardId'])
-        except Standard.DoesNotExist:
+            grade = Grade.objects.get(id=data['gradeId'])
+        except Grade.DoesNotExist:
             return Response(
-                {"error": f"Standard with id {data['standardId']} not found"},
+                {"error": f"Grade with id {data['gradeId']} not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -410,20 +410,20 @@ def update_elective_group(request):
                 id=group_id,  # Use the provided groupId if it's a valid UUID
                 defaults={
                     'name': data['groupName'],
-                    'standard': standard,
+                    'grade': grade,
                     'school': request.user
                 }
             )
         else:
             elective_group = ElectiveGroup.objects.create(
                 name=data['groupName'],
-                standard=standard,
+                grade=grade,
                 school=request.user
             )
             created = True
         if not created:
             elective_group.name = data['groupName']
-            elective_group.standard = standard
+            elective_group.grade = grade
             elective_group.save()
 
         updated_subjects = []
@@ -482,12 +482,12 @@ def update_elective_group(request):
 @permission_classes([IsAuthenticated])
 def elective_subject_add_view(request, pk):
     try:
-        standard = Standard.objects.get(id=pk)
-    except Standard.DoesNotExist:
-        return Response({"error": "Standard not found"}, status=status.HTTP_404_NOT_FOUND)
+        grade = Grade.objects.get(id=pk)
+    except Grade.DoesNotExist:
+        return Response({"error": "Grade not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    existing_elective_groups = standard.electives_groups.all()
-    classrooms = standard.classrooms.all()
+    existing_elective_groups = grade.electives_groups.all()
+    classrooms = grade.classrooms.all()
 
     data = {
         'existing_elective_groups': existing_elective_groups,
@@ -569,30 +569,30 @@ def update_class_subject(request, pk):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_grade_subjects(request):
+def get_level_subjects(request):
     user = request.user
 
-    # Use defaultdict to automatically create new grades
-    grade_data = defaultdict(lambda: {
+    # Use defaultdict to automatically create new levels
+    level_data = defaultdict(lambda: {
         'short_name': '',
         'subjects_with_total_in_week': []
     })
 
     # Fetch all subjects for the user's school
     subjects = Subject.objects.filter(school=user).prefetch_related(
-        'class_subjects__class_room__standard__grade'
+        'class_subjects__class_room__grade__level'
     )
 
     for subject in subjects:
         for class_subject in subject.class_subjects.all():
-            grade = class_subject.class_room.standard.grade
+            level = class_subject.class_room.grade.level
             
-            if not grade_data[grade.id]['short_name']:
-                grade_data[grade.id]['short_name'] = grade.short_name
+            if not level_data[level.id]['short_name']:
+                level_data[level.id]['short_name'] = level.short_name
 
-            # Find if subject already exists in this grade's data
+            # Find if subject already exists in this level's data
             subject_data = next(
-                (item for item in grade_data[grade.id]['subjects_with_total_in_week'] if item['id'] == str(subject.id)),
+                (item for item in level_data[level.id]['subjects_with_total_in_week'] if item['id'] == str(subject.id)),
                 None
             )
 
@@ -603,23 +603,23 @@ def get_grade_subjects(request):
                 available_teachers = Teacher.objects.filter(
                     school=user,
                     qualified_subjects=subject,
-                    grades=grade
+                    levels=level
                 ).count()
 
                 # Count specific teachers
                 specific_teachers = Teacher.objects.filter(
                 school=user,
                 qualified_subjects=subject,
-                grades=grade
+                levels=level
             ).annotate(
                 total_subjects=Count('qualified_subjects', distinct=True),
-                total_grades=Count('grades', distinct=True)
+                total_levels=Count('levels', distinct=True)
             ).filter(
                 total_subjects=1,
-                total_grades=1
+                total_levels=1
             ).count()
 
-                grade_data[grade.id]['subjects_with_total_in_week'].append({
+                level_data[level.id]['subjects_with_total_in_week'].append({
                     'name': subject.name,
                     'id': str(subject.id),
                     'total_lessons': class_subject.lessons_per_week,
@@ -628,6 +628,6 @@ def get_grade_subjects(request):
                 })
 
     # Convert defaultdict to the desired list format
-    result = list(grade_data.values())
+    result = list(level_data.values())
 
     return Response(result)

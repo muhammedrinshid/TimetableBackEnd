@@ -36,13 +36,13 @@ class RoomSerializer(serializers.ModelSerializer):
         fields = ['name', 'room_number', 'room_type']
 
 class ClassDetailsSerializer(serializers.ModelSerializer):
-    standard = serializers.CharField(source='class_section.classroom.standard.short_name')
+    grade = serializers.CharField(source='class_section.classroom.grade.short_name')
     division = serializers.CharField(source='class_section.classroom.division')
     number_of_students = serializers.IntegerField()
 
     class Meta:
         model = LessonClassSection
-        fields = ['standard', 'division', 'number_of_students']
+        fields = ['grade', 'division', 'number_of_students']
 class TeacherSessionSerializer(serializers.ModelSerializer):
     subject = serializers.CharField(source='course.name')
     type = serializers.SerializerMethodField()
@@ -108,21 +108,21 @@ class WholeTeacherWeekTimetableSerializer(serializers.Serializer):
 
 
 class ClassroomSerializer(serializers.ModelSerializer):
-    standard = serializers.CharField(source='standard.short_name')
+    grade = serializers.CharField(source='grade.short_name')
     room = RoomSerializer()
 
     class Meta:
         model = Classroom
-        fields = ['standard', 'room']
+        fields = ['grade', 'room']
 
 class ClassSectionSerializer(serializers.ModelSerializer):
-    standard = serializers.CharField(source='classroom.standard.short_name')
+    grade = serializers.CharField(source='classroom.grade.short_name')
     room = RoomSerializer(source='classroom.room')
     total_students = serializers.CharField(source='classroom.number_of_students')
     class_id=serializers.CharField(source='classroom.class_id')
     class Meta:
         model = ClassSection
-        fields = ['standard', 'division', 'room', 'total_students','class_id']
+        fields = ['grade', 'division', 'room', 'total_students','class_id']
 
    
 class ClassDistributionSerializer(serializers.ModelSerializer):
