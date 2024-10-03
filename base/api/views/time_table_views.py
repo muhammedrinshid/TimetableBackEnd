@@ -857,3 +857,120 @@ def download_classroom_timetable(request, pk):
     wb.save(response)
 
     return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def download_teacher_timetable(request, pk=None):
+    user = request.user
+    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+
+    if pk is not None:
+        try:
+            teacher = Teacher.objects.get(id=pk, school=user)
+            tutor = Tutor.objects.get(teacher=teacher, timetable=timetable)
+        except Teacher.DoesNotExist:
+            return Response({'error': 'Teacher not found for this school.'}, status=status.HTTP_404_NOT_FOUND)
+        except Tutor.DoesNotExist:
+            return Response({'error': 'No timetable available for this teacher.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    working_days = user.working_days
+    day_timetable = []
+
+    for day_code in working_days:
+        sessions = [None] * timetable.number_of_lessons
+        lessons = Lesson.objects.filter(
+            timetable=timetable,
+            allotted_teacher=tutor,
+            timeslot__day_of_week=day_code
+        ).order_by('timeslot__period')
+
+        for lesson in lessons:
+            sessions[lesson.timeslot.period - 1] = lesson
+
+        if sessions:
+            day_timetable.append({
+                'day': day_code,
+                'sessions': sessions
+            })
+
+    serializer = TeacherWeekTimetableSerializer(day_timetable, many=True)
+    timetable_data = serializer.data
+
+    # Create a new workbook and select the active sheet
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{teacher.name}'s Timetable"
+
+    # Define styles
+    header_font = Font(name='Arial', bold=True, color="FFFFFF", size=12)
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    day_font = Font(name='Arial', bold=True, size=11)
+    content_font = Font(name='Arial', size=10)
+    centered_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+    # Color mapping for session types
+    color_map = {
+        'Core': PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid"),  # Light green
+        'Elective': PatternFill(start_color="E2EFFF", end_color="E2EFFF", fill_type="solid"),  # Light blue
+        'Free': PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")  # Light yellow
+    }
+    day_fill = PatternFill(start_color="008080", end_color="66CDAA", fill_type="solid")  # Teal to light teal
+
+    # Define the alignment (centered both vertically and horizontally)
+    day_alignment = Alignment(horizontal='center', vertical='center')
+    # Write headers
+    headers = ["Day"] + [f"Session {i+1}" for i in range(timetable.number_of_lessons)]
+    for col, header in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = centered_alignment
+        cell.border = border
+
+    # Write timetable data
+    for row, day_data in enumerate(timetable_data, start=2):
+        cell = ws.cell(row=row, column=1, value=day_data['day'])
+        cell.font = day_font
+        cell.fill = day_fill  # Set the background color
+        cell.alignment = day_alignment
+            
+        for col, session in enumerate(day_data['sessions'], start=2):
+            cell = ws.cell(row=row, column=col)
+            if session['subject']:
+                cell_value = f"{session['subject'] or session['elective_subject_name']}\n"
+                cell_value += f"Room: {session['room']['room_number'] if session['room'] else 'N/A'}\n"
+                if session['class_details']: 
+                    for class_detail in session['class_details']:
+                        cell_value += f"{class_detail['standard']} {class_detail['division']}"
+                        if session['type'] == 'Elective':
+                            cell_value += f" ({class_detail['number_of_students']} students)"
+                        cell_value += "\n"
+                cell.value = cell_value.strip()
+                if session['type']: 
+
+                    cell.fill = color_map[session['type']]
+            else:
+                cell.value = "Free Period/\nPlanning Period"
+                cell.fill = color_map['Free']
+            
+            cell.font = content_font
+            cell.alignment = centered_alignment
+            cell.border = border
+
+    # Adjust column widths and row heights
+    for col in range(1, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 20
+    
+    for row in range(1, len(timetable_data) + 2):  # +2 to include header row
+        ws.row_dimensions[row].height = 80  # Adjust this value as needed
+
+    # Create the HTTP response
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="{teacher.name}_timetable.xlsx"'
+
+    # Save the workbook to the response
+    wb.save(response)
+
+    return response
