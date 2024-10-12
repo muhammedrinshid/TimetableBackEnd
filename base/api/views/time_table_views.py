@@ -390,7 +390,7 @@ def get_teacher_day_timetable(user, timetable, day_of_week):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_teacher_single_day_timetable(request, day_of_week):
+def get_whole_teacher_single_day_timetable(request, day_of_week):
     user = request.user
     timetable = get_object_or_404(Timetable, school=user, is_default=True)
     day_timetable = get_teacher_day_timetable(user, timetable, day_of_week)
@@ -409,11 +409,12 @@ def get_teacher_single_day_timetable(request, day_of_week):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_whole_teacher_default_week_timetable(request):
+def get_whole_teacher_default_week_timetable(request,pk=None):
     user = request.user
-
-    timetable = get_object_or_404(Timetable, school=user, is_default=True)
-    
+    if pk is None:
+        timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    else:
+        timetable = get_object_or_404(Timetable, id=pk,school=user)
     # Get working days
     working_days = user.working_days
 
@@ -424,7 +425,11 @@ def get_whole_teacher_default_week_timetable(request):
         week_timetable[day_code] = day_timetable
     
     serializer = WholeTeacherWeekTimetableSerializer(week_timetable, working_days=working_days)
-    return Response(serializer.data)
+    response_data = {
+        "week_timetable": serializer.data,
+        "lessons_per_day": timetable.number_of_lessons
+    }
+    return Response(response_data)
 
 
 @api_view(['GET'])
@@ -514,7 +519,7 @@ def get_student_day_timetable(user, timetable, day_of_week):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_student_single_day_timetable(request, day_of_week):
+def get_whole_student_single_day_timetable(request, day_of_week):
     user = request.user
     timetable = get_object_or_404(Timetable, school=user, is_default=True)
     day_timetable = get_student_day_timetable(user, timetable, day_of_week)

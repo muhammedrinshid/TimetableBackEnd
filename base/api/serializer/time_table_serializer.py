@@ -38,11 +38,12 @@ class RoomSerializer(serializers.ModelSerializer):
 class ClassDetailsSerializer(serializers.ModelSerializer):
     standard = serializers.CharField(source='class_section.classroom.standard.short_name')
     division = serializers.CharField(source='class_section.classroom.division')
+    id=serializers.UUIDField(source='class_section.classroom.id')
     number_of_students = serializers.IntegerField()
 
     class Meta:
         model = LessonClassSection
-        fields = ['standard', 'division', 'number_of_students']
+        fields = ['id','standard', 'division', 'number_of_students']
 class TeacherSessionSerializer(serializers.ModelSerializer):
     subject = serializers.CharField(source='course.name')
     type = serializers.SerializerMethodField()
@@ -65,13 +66,14 @@ class TeacherSessionSerializer(serializers.ModelSerializer):
 
 class InstructorSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='teacher.name')
-    profile_image = serializers.CharField(source='teacher.profile_image')
+    profile_image = serializers.CharField(source='teacher.profile_image.url')
     surname = serializers.CharField(source='teacher.surname')
     teacher_id = serializers.CharField(source='teacher.teacher_id')
+    id = serializers.CharField(source='teacher.id')
     qualified_subjects=SubjectSerializer(source='teacher.qualified_subjects', many=True, read_only=True,)
     class Meta:
         model = Tutor
-        fields = ['name', 'profile_image', 'surname', 'teacher_id','qualified_subjects']
+        fields = ['id','name', 'profile_image', 'surname', 'teacher_id','qualified_subjects']
 
 class TeacherDayTimetableSerializer(serializers.Serializer):
     instructor = InstructorSerializer()
@@ -120,9 +122,10 @@ class ClassSectionSerializer(serializers.ModelSerializer):
     room = RoomSerializer(source='classroom.room')
     total_students = serializers.CharField(source='classroom.number_of_students')
     class_id=serializers.CharField(source='classroom.class_id')
+    id=serializers.UUIDField(source='classroom.id')
     class Meta:
         model = ClassSection
-        fields = ['standard', 'division', 'room', 'total_students','class_id']
+        fields = ['id','standard', 'division', 'room', 'total_students','class_id']
 
    
 class ClassDistributionSerializer(serializers.ModelSerializer):
@@ -182,6 +185,7 @@ class StudentSessionSerializer(serializers.Serializer):
                     'teacher': {
                         'name': f"{lesson.allotted_teacher.teacher.name} {lesson.allotted_teacher.teacher.surname}".strip(),
                         'profile_image': lesson.allotted_teacher.teacher.profile_image.url if lesson.allotted_teacher.teacher.profile_image else None,
+                        'id':lesson.allotted_teacher.teacher.id,
                     },
                     'number_of_students_from_this_class': lcs.number_of_students,
                     'room': {
