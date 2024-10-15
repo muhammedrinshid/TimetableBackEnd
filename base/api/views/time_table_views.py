@@ -145,6 +145,7 @@ def save_optimization_results(user, solution,score,hard_score,soft_score):
                     timeslot_obj = None
 
                 # Create Lesson
+                elective_group_id = lesson.elective.id if lesson.is_elective else None
                 lesson_instance = Lesson.objects.create(
                     timetable=timetable,
                     school=user,
@@ -153,7 +154,8 @@ def save_optimization_results(user, solution,score,hard_score,soft_score):
                     classroom_assignment=classroom_assignment,
                     timeslot=timeslot_obj,
                     elective_subject_name=lesson.elective_subject_name,
-                    is_elective=lesson.is_elective
+                    is_elective=lesson.is_elective,
+                    elective_group_id=elective_group_id
                 )
 
                 # Process ClassSection

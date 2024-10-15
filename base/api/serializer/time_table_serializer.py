@@ -33,7 +33,7 @@ class TimetableUpdateSerializer(serializers.ModelSerializer):
 class RoomSerializer(serializers.ModelSerializer):
     class Meta:
         model = Room
-        fields = ['name', 'room_number', 'room_type']
+        fields = ['name', 'room_number', 'room_type','id']
 
 class ClassDetailsSerializer(serializers.ModelSerializer):
     standard = serializers.CharField(source='class_section.classroom.standard.short_name')
@@ -46,6 +46,7 @@ class ClassDetailsSerializer(serializers.ModelSerializer):
         fields = ['id','standard', 'division', 'number_of_students']
 class TeacherSessionSerializer(serializers.ModelSerializer):
     subject = serializers.CharField(source='course.name')
+    subject_id = serializers.UUIDField(source='course.subject.id')
     type = serializers.SerializerMethodField()
     elective_subject_name = serializers.CharField()
     room = RoomSerializer(source='classroom_assignment.room')
@@ -53,7 +54,7 @@ class TeacherSessionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lesson
-        fields = ['subject', 'type', 'elective_subject_name', 'room', 'class_details']
+        fields = ['subject','subject_id', 'type', 'elective_subject_name', 'room', 'class_details','elective_group_id']
 
     def get_type(self, obj):
         return 'Elective' if obj.is_elective else 'Core'
@@ -63,6 +64,7 @@ class TeacherSessionSerializer(serializers.ModelSerializer):
             # Return a dictionary with all fields set to None
             return {field: None for field in self.Meta.fields}
         return super().to_representation(instance)
+
 
 class InstructorSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='teacher.name')

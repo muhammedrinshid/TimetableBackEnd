@@ -132,6 +132,7 @@ class Lesson(models.Model):
     timeslot = models.ForeignKey(Timeslot, on_delete=models.CASCADE)
     is_elective=models.BooleanField(default=False, null=True, blank=True)
     elective_subject_name=models.CharField(max_length=100,null=True,blank=True)
+    elective_group_id=models.UUIDField(null=True,blank=True)
     def __str__(self):
         return f"{self.course.name} - {self.timeslot}"
 
