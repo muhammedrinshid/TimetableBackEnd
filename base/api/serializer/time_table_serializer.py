@@ -79,7 +79,7 @@ class InstructorSerializer(serializers.ModelSerializer):
 
 class TeacherDayTimetableSerializer(serializers.Serializer):
     instructor = InstructorSerializer()
-    sessions = TeacherSessionSerializer(many=True)
+    sessions = serializers.ListField(child=TeacherSessionSerializer(many=True))
 
 
 class WholeTeacherWeekTimetableSerializer(serializers.Serializer):

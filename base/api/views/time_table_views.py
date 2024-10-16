@@ -357,38 +357,33 @@ def timetable_detail(request, timetable_id):
 
 # fetching results
 def get_teacher_day_timetable(user, timetable, day_of_week):
-    # Get all teachers for the school
     teachers = Teacher.objects.filter(school=user)
-    
     day_timetable = []
     
     for teacher in teachers:
-        # Check if there's a Tutor object for this teacher and timetable
         tutor = Tutor.objects.filter(teacher=teacher, timetable=timetable).first()
         
         if tutor:
-            # Initialize sessions with None for each period
-            sessions = [None] * timetable.number_of_lessons
+            sessions = [[] for _ in range(timetable.number_of_lessons)]
             
-            # Get all lessons for this tutor on the specified day
             lessons = Lesson.objects.filter(
                 timetable=timetable,
                 allotted_teacher=tutor,
                 timeslot__day_of_week=day_of_week
             ).order_by('timeslot__period')
-            # Fill in the sessions with actual lesson data
-            for lesson in lessons:
-                sessions[lesson.timeslot.period - 1] = lesson
             
-            # Remove any remaining None values
-            # sessions = [s for s in sessions if s is not None]
-            if sessions:  # Only add to day_timetable if there are sessions
+            for lesson in lessons:
+                sessions[lesson.timeslot.period - 1].append(lesson)
+            sessions=[[None] if not s else s for s in sessions]
+            if any(sessions):  # Only add to day_timetable if there are any sessions
                 day_timetable.append({
                     'instructor': tutor,
                     'sessions': sessions
                 })
     
     return day_timetable
+
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
