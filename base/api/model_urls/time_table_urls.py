@@ -13,6 +13,7 @@ urlpatterns = [
                 path('teacher-view-day/<str:day_of_week>/',time_table_views.get_whole_teacher_single_day_timetable , name='day_timetable'),
                 path('default-teacher-view-week/', time_table_views.get_whole_teacher_default_week_timetable, name='default_teachers_week_timetable'),
                 path('edit-teacher-week-timetable/<str:pk>/', time_table_views.get_whole_teacher_default_week_timetable, name='teachers_week_timetable_for_edit'),
+                path('edit-student-week-timetable/<str:pk>/', time_table_views.get_whole_student_default_week_timetable, name='students_week_timetable_for_edit'),
                 path('teacher-view-week/<str:pk>/', time_table_views.get_whole_teacher_week_timetable, name='teachers_week_timetable'),
                 path('classroom-timetable-week/<str:pk>/', time_table_views.get_classroom_week_timetable, name='week_timetable_classroom'),
                 path('teacher-timetable-week/<str:pk>/', time_table_views.get_teacher_week_timetable, name='week_timetable_teacher'),

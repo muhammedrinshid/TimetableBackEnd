@@ -4,6 +4,7 @@ from rest_framework import serializers
 from ...models import  Teacher, Room, Subject, Classroom
 from ...time_table_models import Timetable,  Lesson,LessonClassSection,Tutor,ClassSection
 from .user_serializer import SubjectSerializer
+from uuid import uuid4
 class TimetableSerializer(serializers.ModelSerializer):
     class Meta:
         model = Timetable
@@ -51,10 +52,10 @@ class TeacherSessionSerializer(serializers.ModelSerializer):
     elective_subject_name = serializers.CharField()
     room = RoomSerializer(source='classroom_assignment.room')
     class_details = ClassDetailsSerializer(source='lessonclasssection_set', many=True)
-
+    session_key=serializers.SerializerMethodField()
     class Meta:
         model = Lesson
-        fields = ['subject','subject_id', 'type', 'elective_subject_name', 'room', 'class_details','elective_group_id']
+        fields = ['subject','subject_id', 'type', 'elective_subject_name', 'room', 'class_details','elective_group_id','session_key']
 
     def get_type(self, obj):
         return 'Elective' if obj.is_elective else 'Core'
@@ -64,7 +65,8 @@ class TeacherSessionSerializer(serializers.ModelSerializer):
             # Return a dictionary with all fields set to None
             return {field: None for field in self.Meta.fields}
         return super().to_representation(instance)
-
+    def get_session_key(self, obj):
+        return str(uuid4())  # Generate a new UUID for each instance
 
 class InstructorSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='teacher.name')
@@ -154,30 +156,40 @@ class ClassDistributionSerializer(serializers.ModelSerializer):
             'number': room.room_number,
             'type': room.get_room_type_display(),
         }
+
 class StudentSessionSerializer(serializers.Serializer):
     name = serializers.SerializerMethodField()
     type = serializers.SerializerMethodField()
+    elective_id = serializers.SerializerMethodField()  # Use SerializerMethodField here
     class_distribution = serializers.SerializerMethodField()
 
     def get_name(self, obj):
-        if not obj:
+        if not obj or (isinstance(obj, list) and len(obj) == 0):
             return None
         return ', '.join(set(lesson.elective_subject_name if lesson.is_elective else lesson.course.name for lesson in obj))
 
     def get_type(self, obj):
-        if not obj:
+        if not obj or (isinstance(obj, list) and len(obj) == 0):
             return None
         types = set('Elective' if lesson.is_elective else 'Core' for lesson in obj)
         return ', '.join(types)
+    def get_elective_id(self, obj):
+        print("hi")
+
+        if not obj or (isinstance(obj, list) and len(obj) == 0):
+            return None
+        
+        first_lesson = obj[0]
+        
+        # Return the elective_group_id if it's an elective lesson, else None
+        return first_lesson.elective_group_id if first_lesson.is_elective and first_lesson.elective_group_id else None
 
     def get_class_distribution(self, obj):
-        if not obj:
+        if not obj or (isinstance(obj, list) and len(obj) == 0):
             return []
         
         distribution = []
         for lesson in obj:
-            # Assuming we have access to the current class_section
-            # You might need to pass this information to the serializer
             current_class_section = self.context.get('class_section')
             
             try:
@@ -187,7 +199,7 @@ class StudentSessionSerializer(serializers.Serializer):
                     'teacher': {
                         'name': f"{lesson.allotted_teacher.teacher.name} {lesson.allotted_teacher.teacher.surname}".strip(),
                         'profile_image': lesson.allotted_teacher.teacher.profile_image.url if lesson.allotted_teacher.teacher.profile_image else None,
-                        'id':lesson.allotted_teacher.teacher.id,
+                        'id': lesson.allotted_teacher.teacher.id,
                     },
                     'number_of_students_from_this_class': lcs.number_of_students,
                     'room': {
@@ -197,16 +209,37 @@ class StudentSessionSerializer(serializers.Serializer):
                     }
                 })
             except LessonClassSection.DoesNotExist:
-                # Handle the case where there's no matching LessonClassSection
                 pass
 
         return distribution
+    
+    
 class StudentDayTimetableSerializer(serializers.Serializer):
     classroom = ClassSectionSerializer()
     sessions = serializers.SerializerMethodField()
 
     def get_sessions(self, obj):
-        return StudentSessionSerializer(obj['sessions'], many=True, context={'class_section': obj['classroom']}).data
+        # Handle the nested structure: sessions[period][group]
+        formatted_sessions = []
+        for period_groups in obj['sessions']:
+            if not period_groups:  # Empty period
+                formatted_sessions.append([])
+                continue
+                
+            period_data = []
+            for lesson_group in period_groups:
+                if lesson_group:  # Skip empty groups
+                    period_data.append(
+                        StudentSessionSerializer(
+                            lesson_group, 
+                            context={'class_section': obj['classroom']}
+                        ).data
+                    )
+            formatted_sessions.append(period_data)
+            
+        return formatted_sessions
+    
+    
 class StudentWeekTimetableSerializer(serializers.Serializer):
     def __init__(self, *args, **kwargs):
         working_days = kwargs.pop('working_days', [])

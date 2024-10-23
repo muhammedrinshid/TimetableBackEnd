@@ -473,7 +473,6 @@ def get_whole_teacher_week_timetable(request, pk):
 
 
 
-
 def get_student_day_timetable(user, timetable, day_of_week):
     class_sections = ClassSection.objects.filter(
         timetable=timetable
@@ -500,11 +499,41 @@ def get_student_day_timetable(user, timetable, day_of_week):
     day_timetable = []
 
     for class_section in class_sections:
-        sessions = defaultdict(list)
+        # First, group lessons by period
+        period_lessons = defaultdict(list)
         for lesson in class_section.day_lessons:
-            sessions[lesson.timeslot.period - 1].append(lesson)
-
-        formatted_sessions = [sessions[i] for i in range(timetable.number_of_lessons)]
+            period_lessons[lesson.timeslot.period - 1].append(lesson)
+        
+        # Now process each period's lessons into groups
+        formatted_sessions = []
+        for period in range(timetable.number_of_lessons):
+            lessons = period_lessons[period]
+            if not lessons:
+                formatted_sessions.append([])  # Empty period
+                continue
+            
+            # Group lessons by type and elective group
+            lesson_groups = []
+            processed_lessons = set()
+            
+            # First, group elective lessons with same elective_group_id
+            elective_groups = defaultdict(list)
+            for lesson in lessons:
+                if lesson.is_elective and lesson.elective_group_id and lesson not in processed_lessons:
+                    elective_groups[lesson.elective_group_id].append(lesson)
+                    processed_lessons.add(lesson)
+            
+            # Add each elective group as a separate bundle
+            for group_lessons in elective_groups.values():
+                if group_lessons:  # Should always be true
+                    lesson_groups.append(group_lessons)
+            
+            # Handle remaining lessons (single electives without group and core subjects)
+            for lesson in lessons:
+                if lesson not in processed_lessons:
+                    lesson_groups.append([lesson])
+            
+            formatted_sessions.append(lesson_groups)
 
         day_timetable.append({
             'classroom': class_section,
@@ -512,6 +541,7 @@ def get_student_day_timetable(user, timetable, day_of_week):
         })
 
     return day_timetable
+
 
 
 @api_view(['GET'])
@@ -526,9 +556,13 @@ def get_whole_student_single_day_timetable(request, day_of_week):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_whole_student_default_week_timetable(request):
+def get_whole_student_default_week_timetable(request,pk=None):
     user = request.user
-    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+
+    if pk is None:
+        timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    else:
+        timetable = get_object_or_404(Timetable, id=pk,school=user)
     
     working_days = user.working_days
 
@@ -538,7 +572,11 @@ def get_whole_student_default_week_timetable(request):
         week_timetable[day_code] = day_timetable
     
     serializer = StudentWeekTimetableSerializer(week_timetable, working_days=working_days)
-    return Response(serializer.data)
+    response_data = {
+        "week_timetable": serializer.data,
+        "lessons_per_day": timetable.number_of_lessons
+    }
+    return Response(response_data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
