@@ -162,6 +162,7 @@ class StudentSessionSerializer(serializers.Serializer):
     type = serializers.SerializerMethodField()
     elective_id = serializers.SerializerMethodField()  # Use SerializerMethodField here
     class_distribution = serializers.SerializerMethodField()
+    session_key=serializers.SerializerMethodField()
 
     def get_name(self, obj):
         if not obj or (isinstance(obj, list) and len(obj) == 0):
@@ -174,7 +175,6 @@ class StudentSessionSerializer(serializers.Serializer):
         types = set('Elective' if lesson.is_elective else 'Core' for lesson in obj)
         return ', '.join(types)
     def get_elective_id(self, obj):
-        print("hi")
 
         if not obj or (isinstance(obj, list) and len(obj) == 0):
             return None
@@ -183,6 +183,8 @@ class StudentSessionSerializer(serializers.Serializer):
         
         # Return the elective_group_id if it's an elective lesson, else None
         return first_lesson.elective_group_id if first_lesson.is_elective and first_lesson.elective_group_id else None
+    def get_session_key(self, obj):
+        return str(uuid4())  # Generate a new UUID for each instance
 
     def get_class_distribution(self, obj):
         if not obj or (isinstance(obj, list) and len(obj) == 0):
@@ -206,6 +208,7 @@ class StudentSessionSerializer(serializers.Serializer):
                         'name': lesson.classroom_assignment.room.name,
                         'number': lesson.classroom_assignment.room.room_number,
                         'type': lesson.classroom_assignment.room.get_room_type_display(),
+                        'id': lesson.classroom_assignment.room.id,
                     }
                 })
             except LessonClassSection.DoesNotExist:
