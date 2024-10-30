@@ -128,7 +128,7 @@ class Lesson(models.Model):
     allotted_teacher = models.ForeignKey(Tutor, on_delete=models.CASCADE, related_name='allotted_lessons')
     # available_teachers = models.ManyToManyField(Tutor, related_name='available_lessons')
     class_sections = models.ManyToManyField(ClassSection, through='LessonClassSection', related_name="lessons")
-    classroom_assignment = models.ForeignKey(ClassroomAssignment, on_delete=models.CASCADE)
+    classroom_assignment = models.ForeignKey(ClassroomAssignment, on_delete=models.CASCADE) #room in main data base model
     timeslot = models.ForeignKey(Timeslot, on_delete=models.CASCADE)
     is_elective=models.BooleanField(default=False, null=True, blank=True)
     elective_subject_name=models.CharField(max_length=100,null=True,blank=True)

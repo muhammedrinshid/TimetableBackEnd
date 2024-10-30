@@ -53,9 +53,10 @@ class TeacherSessionSerializer(serializers.ModelSerializer):
     room = RoomSerializer(source='classroom_assignment.room')
     class_details = ClassDetailsSerializer(source='lessonclasssection_set', many=True)
     session_key=serializers.SerializerMethodField()
+    lesson_id=serializers.UUIDField(source='id')
     class Meta:
         model = Lesson
-        fields = ['subject','subject_id', 'type', 'elective_subject_name', 'room', 'class_details','elective_group_id','session_key']
+        fields = ['subject','subject_id', 'type', 'elective_subject_name', 'room', 'class_details','elective_group_id','session_key','lesson_id']
 
     def get_type(self, obj):
         return 'Elective' if obj.is_elective else 'Core'
@@ -163,6 +164,8 @@ class StudentSessionSerializer(serializers.Serializer):
     elective_id = serializers.SerializerMethodField()  # Use SerializerMethodField here
     class_distribution = serializers.SerializerMethodField()
     session_key=serializers.SerializerMethodField()
+    class_id=serializers.SerializerMethodField()
+    
 
     def get_name(self, obj):
         if not obj or (isinstance(obj, list) and len(obj) == 0):
@@ -198,6 +201,7 @@ class StudentSessionSerializer(serializers.Serializer):
                 lcs = LessonClassSection.objects.get(lesson=lesson, class_section=current_class_section)
                 distribution.append({
                     'subject': lesson.course.name,
+                    'lesson_id':lesson.id,
                     'teacher': {
                         'name': f"{lesson.allotted_teacher.teacher.name} {lesson.allotted_teacher.teacher.surname}".strip(),
                         'profile_image': lesson.allotted_teacher.teacher.profile_image.url if lesson.allotted_teacher.teacher.profile_image else None,
@@ -206,8 +210,8 @@ class StudentSessionSerializer(serializers.Serializer):
                     'number_of_students_from_this_class': lcs.number_of_students,
                     'room': {
                         'name': lesson.classroom_assignment.room.name,
-                        'number': lesson.classroom_assignment.room.room_number,
-                        'type': lesson.classroom_assignment.room.get_room_type_display(),
+                        'room_number': lesson.classroom_assignment.room.room_number,
+                        'room_type': lesson.classroom_assignment.room.get_room_type_display(),
                         'id': lesson.classroom_assignment.room.id,
                     }
                 })
@@ -215,7 +219,9 @@ class StudentSessionSerializer(serializers.Serializer):
                 pass
 
         return distribution
-    
+    def get_class_id(self,obj):
+        class_section=self.context.get("class_section")
+        return class_section.classroom.class_id if class_section.classroom else None
     
 class StudentDayTimetableSerializer(serializers.Serializer):
     classroom = ClassSectionSerializer()

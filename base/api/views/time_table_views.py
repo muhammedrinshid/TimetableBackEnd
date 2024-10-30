@@ -721,6 +721,233 @@ def get_teacher_week_timetable(request,pk):
 
 
 
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def submit_teacher_week_timetable_edits(request, pk):
+    user = request.user
+    timetable = get_object_or_404(Timetable, id=pk, school=user)
+    updated_data = request.data.get("week_timetable")
+    
+    try:
+        with transaction.atomic():
+            for day, teacher_data in updated_data.items():
+                for teacher_info in teacher_data:
+                    instructor = teacher_info['instructor']
+                    sessions = teacher_info['sessions']
+                    
+                    # Get or create tutor
+                    tutor = get_or_create_tutor(
+                        teacher_id=instructor['id'],
+                        teacher_name=f"{instructor['name']} {instructor['surname']}",
+                        timetable=timetable,
+                        user=user
+                    )
+                    
+                    # Process each session group
+                    for period_index, session_group in enumerate(sessions):
+                        for session in session_group:
+                            lesson_id = session.get('lesson_id')
+                            
+                            # Skip if no lesson ID
+                            if not lesson_id:
+                                continue
+                                
+                            lesson = get_object_or_404(
+                                Lesson,
+                                id=lesson_id,
+                                timetable=timetable,
+                                school=user
+                            )
+                            
+                            # Verify teacher qualification
+                            subject_id = session.get('subject_id')
+                            if subject_id and not tutor.teacher.qualified_subjects.filter(id=subject_id).exists():
+                                return Response(
+                                    {"error": f"Teacher {tutor.teacher.name} is not qualified to teach this subject"},
+                                    status=status.HTTP_400_BAD_REQUEST
+                                )
+                            
+                            # 1. Get or create timeslot
+                            period = period_index + 1
+                            timeslot = get_or_create_timeslot(
+                                day,
+                                period,
+                                timetable,
+                                user
+                            )
+                            
+                            # 2. Get or create classroom assignment if room data exists
+                            room_data = session.get('room')
+                            if room_data:
+                                classroom_assignment = get_or_create_classroom_assignment(
+                                    room_data=room_data,
+                                    timetable=timetable,
+                                    user=user
+                                )
+                                
+                                # Update classroom assignment if different
+                                if lesson.classroom_assignment != classroom_assignment:
+                                    print("hi")
+                                    lesson.classroom_assignment = classroom_assignment
+                            
+                            # Update lesson if needed
+                            if (lesson.timeslot != timeslot ):
+                                
+                                lesson.timeslot = timeslot
+                                
+                            if ( lesson.allotted_teacher != tutor):
+                                
+                                lesson.allotted_teacher = tutor
+                            lesson.save()
+                            
+        return Response({"message": "Timetable updated successfully"}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+        
+        
+        
+        
+        
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def submit_student_week_timetable_edits(request, pk):
+    try:
+        # Get the timetable instance
+        timetable = get_object_or_404(Timetable, id=pk, school=request.user)
+        updated_data = request.data.get("week_timetable")
+
+        with transaction.atomic():
+            for day, classroom_data_list in updated_data.items():
+                for classroom_data in classroom_data_list:
+                    classroom_id = classroom_data['classroom']['id']
+                    
+                    # Verify classroom belongs to school
+                    classroom_section = get_object_or_404(
+                        ClassSection, 
+                        classroom__id=classroom_id,
+                        school=request.user,
+                        timetable=timetable
+                    )
+
+                    for period_index, session_group in enumerate(classroom_data['sessions']):
+                        # Get or validate timeslot
+                        timeslot = get_or_create_timeslot(
+                            day, period_index+1, timetable, request.user
+                        )
+                        
+                        for session in session_group:
+                            # Add null check for class_distribution
+                            if not session.get('class_distribution'):
+                                continue  # Skip if class_distribution is None or empty
+                            
+                            for distribution in session['class_distribution']:
+                                # Ensure lesson_id exists in distribution
+                                if not distribution or 'lesson_id' not in distribution:
+                                    continue  # Skip if distribution is None or lesson_id is missing
+                                
+                                # Validate teacher data exists
+                                if not distribution.get('teacher') or 'id' not in distribution['teacher']:
+                                    continue  # Skip if teacher data is missing
+
+                                # Validate room data exists
+                                if not distribution.get('room'):
+                                    continue  # Skip if room data is missing
+
+                                lesson = get_object_or_404(
+                                    Lesson, 
+                                    id=distribution['lesson_id'],
+                                    timetable=timetable,
+                                    school=request.user
+                                )
+
+                                # Verify lesson belongs to correct classroom
+                                if not lesson.class_sections.filter(
+                                    classroom__id=classroom_id
+                                ).exists():
+                                    return Response(
+                                        {"error": "Lesson does not belong to this classroom"},
+                                        status=status.HTTP_400_BAD_REQUEST
+                                    )
+
+                                # Update timeslot if different
+                                if lesson.timeslot != timeslot:
+                                    lesson.timeslot = timeslot
+
+                                # Handle teacher update
+                                teacher_id = distribution['teacher']['id']
+                                tutor = get_or_create_tutor(
+                                    teacher_id, 
+                                    distribution['teacher']['name'],
+                                    timetable, 
+                                    request.user
+                                )
+                                
+                                if lesson.allotted_teacher != tutor:
+                                    lesson.allotted_teacher = tutor
+
+                                # Handle room update
+                                room_data = distribution['room']
+                                classroom_assignment = get_or_create_classroom_assignment(
+                                    room_data,
+                                    timetable,
+                                    request.user
+                                )
+                                
+                                if lesson.classroom_assignment != classroom_assignment:
+                                    lesson.classroom_assignment = classroom_assignment
+
+                                lesson.save()
+
+        return Response({"message": "Timetable updated successfully"})
+
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+def get_or_create_timeslot(day, period, timetable, user):
+    timeslot, created = Timeslot.objects.get_or_create(
+        day_of_week=day,
+        period=period,
+        timetable=timetable,
+        school=user,
+    )
+    return timeslot
+
+def get_or_create_tutor(teacher_id, teacher_name, timetable, user):
+    teacher = get_object_or_404(Teacher, id=teacher_id, school=user)
+    tutor, created = Tutor.objects.get_or_create(
+        teacher=teacher,
+        timetable=timetable,
+        school=user,
+        defaults={'name': teacher_name}
+    )
+    return tutor
+
+def get_or_create_classroom_assignment(room_data, timetable, user):
+    room = get_object_or_404(Room, id=room_data['id'], school=user)
+    classroom_assignment, created = ClassroomAssignment.objects.get_or_create(
+        room=room,
+        timetable=timetable,
+        school=user,
+        defaults={
+            'name': room_data['name'],
+            'room_type': room_data['room_type'],
+            'capacity': 0  # Set appropriate default
+        }
+    )
+    return classroom_assignment
+
+
+
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def download_classroom_timetable(request, pk):
