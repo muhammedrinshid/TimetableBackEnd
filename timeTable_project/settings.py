@@ -207,3 +207,18 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+
+
+
+# email settings
+
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.mailgun.org'
+EMAIL_PORT = 587  # or 465 for SSL, or 25 as needed
+EMAIL_USE_TLS = True  # Set to False if using port 465 (SSL)
+EMAIL_HOST_USER = 'brad@aischedulor.com'
+EMAIL_HOST_PASSWORD = '72e4a3d5-412b3024'
+DEFAULT_FROM_EMAIL = 'brad@aischedulor.com'  # Optional default sender email
+

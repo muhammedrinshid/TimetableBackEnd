@@ -54,4 +54,8 @@ urlpatterns = [
     # - 'pk' represents the unique identifier for the teacher or classroom timetable
     path('download-teacher-timetable/<str:pk>/', time_table_views.download_teacher_timetable, name='download_teacher_timetable'),
     path('download-classroom-timetable/<str:pk>/', time_table_views.download_classroom_timetable, name='download_classroom_timetable'),
+    
+    
+    path('send-email/', time_table_views.send_email, name='send_email_to_teacher'),
+
 ]

@@ -19,10 +19,8 @@ from django.http import HttpResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.table import Table, TableStyleInfo
 
-
-
+import requests
 
 
 def parse_hard_violations_from_score(score):
@@ -1241,3 +1239,41 @@ def download_teacher_timetable(request, pk=None):
     wb.save(response)
 
     return response
+
+
+
+
+
+
+# views.py
+
+
+import os  # For using environment variables
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_email(request):
+    try:
+        response = send_simple_message()
+        
+        if response.status_code == 200:
+            return Response({"message": "Email sent successfully"})
+        else:
+            return Response({"error": response.text}, status=response.status_code)
+    
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+def send_simple_message():
+    return requests.post(
+        "https://api.mailgun.net/v3/sandbox919919ba556845f0accbe24af85df115.mailgun.org/messages",
+        auth=("api", os.getenv("72e4a3d5-412b3024")),  # Use environment variable
+        data={
+            "from": "Excited User <mailgun@sandbox919919ba556845f0accbe24af85df115.mailgun.org>",
+            "to": ["mrappt2001@gmail.com"],  # Ensure this is a valid email
+            "subject": "Hello",
+            "text": "Testing some Mailgun awesomeness!"
+        }
+    )
