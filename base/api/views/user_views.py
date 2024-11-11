@@ -96,7 +96,7 @@ def grades(request):
         serializer = GradeSerializer(grades, many=True)
         
         if not grades.exists():
-            return Response({"detail": "No grades found for the current user."}, status=status.HTTP_200_OK)
+            return Response({"detail": "No grades found for the current user."}, status=status.HTTP_404_NOT_FOUND)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
     

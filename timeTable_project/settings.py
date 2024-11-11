@@ -139,7 +139,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'school_timetable',
         'USER': 'timetable_user',
-        'PASSWORD': '9188',  # Use the password you set
+        'PASSWORD': '9895',  # Use the password you set
         'HOST': 'localhost',
         'PORT': '5432',
     }

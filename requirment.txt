@@ -11,6 +11,6 @@ packaging==24.0
 pillow==10.4.0
 psycopg2==2.9.9
 PyJWT==2.8.0
-sqlparse @ file:///C:/b/abs_88361ub_qu/croot/sqlparse_1690904577514/work
+sqlparse 
 typing_extensions==4.12.2
-tzdata @ file:///croot/python-tzdata_1690578112552/work
+tzdata
