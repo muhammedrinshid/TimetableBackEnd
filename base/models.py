@@ -262,7 +262,7 @@ class Teacher(models.Model):
     grades = models.ManyToManyField('Grade', related_name='teachers')
     min_lessons_per_week = models.PositiveIntegerField()
     max_lessons_per_week = models.PositiveIntegerField()
-    teacher_id = models.CharField(max_length=20, unique=True, editable=True,null=True)
+    teacher_id = models.CharField(max_length=20, editable=True, null=True)
     profile_image = models.ImageField(upload_to='teacher_profiles/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -274,6 +274,9 @@ class Teacher(models.Model):
                 name='min_lessons_lte_max_lessons'
             )
         ]
+
+        unique_together = ('school', 'teacher_id')
+
 
     def __str__(self):
         return f"{self.name} {self.surname}" if self.surname else self.name
@@ -406,7 +409,7 @@ class Classroom(models.Model):
     standard = models.ForeignKey(Standard, related_name='classrooms', on_delete=models.CASCADE)
     school = models.ForeignKey(User, related_name='classrooms', on_delete=models.CASCADE)
     number_of_students = models.PositiveIntegerField(null=True, blank=True,default=0)
-    class_id = models.CharField(max_length=20, unique=True, editable=True)
+    class_id = models.CharField(max_length=20, editable=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     division = models.CharField(max_length=10)
@@ -452,13 +455,12 @@ class Classroom(models.Model):
 
     class Meta:
         constraints = [
+            models.UniqueConstraint(fields=['school', 'class_id'], name='unique_class_id_within_school'),
             models.UniqueConstraint(fields=['standard', 'division'], name='unique_standard_division')
         ]
         verbose_name = "Classroom"
         verbose_name_plural = "Classrooms"
         ordering = ['name']  
-        
-        
         
         
         

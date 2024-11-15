@@ -15,5 +15,6 @@ urlpatterns = [
     path('teacher/',include("base.api.model_urls.teacher_urls")),
     path('class-room/',include("base.api.model_urls.class_room_urls")),
     path('room/',include("base.api.model_urls.room_urls")),
-    path('time-table/',include("base.api.model_urls.time_table_urls"))
+    path('time-table/',include("base.api.model_urls.time_table_urls")),
+    path('analytics/',include("base.api.model_urls.analytics_urls"))
 ]

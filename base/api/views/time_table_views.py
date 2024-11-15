@@ -20,6 +20,12 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from io import BytesIO
 import requests
 
 
@@ -786,7 +792,6 @@ def submit_teacher_week_timetable_edits(request, pk):
                                 
                                 # Update classroom assignment if different
                                 if lesson.classroom_assignment != classroom_assignment:
-                                    print("hi")
                                     lesson.classroom_assignment = classroom_assignment
                             
                             # Update lesson if needed
@@ -949,12 +954,17 @@ def get_or_create_classroom_assignment(room_data, timetable, user):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def download_classroom_timetable(request, pk):
+    """
+    Download classroom timetable in either Excel or PDF format.
+    Use ?format=pdf query parameter for PDF format.
+    """
     user = request.user
     timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    file_type = request.query_params.get('file_type', '').lower()
 
     try:
-        classroom = Classroom.objects.get(id=pk, school=user)
-        classsection = ClassSection.objects.get(classroom=classroom, timetable=timetable)
+        classroom = get_object_or_404(Classroom, id=pk, school=user)
+        classsection = get_object_or_404(ClassSection, classroom=classroom, timetable=timetable)
     except Classroom.DoesNotExist:
         return Response({'error': 'No classroom found for this school.'}, status=404)
     except ClassSection.DoesNotExist:
@@ -986,6 +996,146 @@ def download_classroom_timetable(request, pk):
     serializer = ClassroomWeekTimetableSerializer(day_timetable, many=True, context={'class_section': classsection})
     timetable_data = serializer.data
 
+    try:
+        if file_type == 'pdf':
+            filename = f"{classroom.standard.short_name}-{classroom.division}_timetable.pdf"
+            response = generate_classroom_pdf_timetable(timetable_data, classroom, filename)
+        else:
+            filename = f"{classroom.standard.short_name}-{classroom.division}_timetable.xlsx"
+            response = generate_classroom_excel_timetable(timetable_data, classroom, filename)
+        
+        return response
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+def generate_classroom_pdf_timetable(timetable_data, classroom, filename):
+    # Create PDF buffer
+    buffer = BytesIO()
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30
+    )
+
+    # Define styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        alignment=1,
+        spaceAfter=30
+    )
+    cell_style = ParagraphStyle(
+        'CustomCell',
+        parent=styles['Normal'],
+        fontSize=9,
+        alignment=1,
+        leading=12
+    )
+
+    elements = []
+
+    # Add title
+    title = Paragraph(
+        f"Class Timetable: {classroom.standard.short_name}-{classroom.division}",
+        title_style
+    )
+    elements.append(title)
+    elements.append(Spacer(1, 20))
+
+    # Day names mapping
+    day_names = {
+        'MON': 'Monday',
+        'TUE': 'Tuesday',
+        'WED': 'Wednesday',
+        'THU': 'Thursday',
+        'FRI': 'Friday',
+        'SAT': 'Saturday',
+        'SUN': 'Sunday'
+    }
+
+    # Prepare table data
+    headers = ['Day'] + [f'Period {i+1}' for i in range(len(timetable_data[0]['sessions']))]
+    table_data = [headers]
+
+    for day_data in timetable_data:
+        row = [day_names.get(day_data['day'], day_data['day'])]
+        
+        for session in day_data['sessions']:
+            if session:
+                cell_text = []
+                for distribution in session['class_distribution']:
+                    subject = session['name']
+                    teacher = distribution['teacher']['name']
+                    room = f"{distribution['room']['name']} ({distribution['room']['room_number']})"
+                    
+                    if session['type'] == 'Elective':
+                        students = distribution['number_of_students_from_this_class']
+                        cell_text.append(f"📚 {subject}\n👨‍🏫 {teacher}\n🏫 {room}\n👥 Students: {students}")
+                    else:
+                        cell_text.append(f"📚 {subject}\n👨‍🏫 {teacher}\n🏫 {room}")
+                
+                row.append(Paragraph('\n'.join(cell_text), cell_style))
+            else:
+                row.append(Paragraph('-', cell_style))
+        
+        table_data.append(row)
+
+    # Create table with specific column widths
+    col_widths = [1.2*inch] + [1.5*inch] * (len(headers)-1)
+    table = Table(table_data, colWidths=col_widths)
+    
+    # Define table style
+    style = TableStyle([
+        # Headers
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1F4E79')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        
+        # Day column
+        ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#D9E1F2')),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+        
+        # Grid
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#B4C6E7')),
+        ('BOX', (0, 0), (-1, -1), 1.5, colors.HexColor('#1F4E79')),
+        
+        # Alignment
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        
+        # Row heights
+        ('ROWHEIGHT', (0, 0), (-1, 0), 30),
+        ('ROWHEIGHT', (0, 1), (-1, -1), 80),
+    ])
+    
+    # Add alternating row colors
+    for i in range(1, len(table_data), 2):
+        style.add('BACKGROUND', (1, i), (-1, i), colors.HexColor('#F5F5F5'))
+    
+    table.setStyle(style)
+    elements.append(table)
+
+    # Build PDF document
+    doc.build(elements)
+    
+    # Prepare response
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response
+
+def generate_classroom_excel_timetable(timetable_data, classroom, filename):
+    # Your existing Excel generation code here...
+    # [Keep your current Excel generation code as it works well]
     # Create a new workbook and select the active sheet
     wb = Workbook()
     ws = wb.active
@@ -1021,7 +1171,7 @@ def download_classroom_timetable(request, pk):
                 session_type = session['type']
                 for distribution in session['class_distribution']:
                     teacher = distribution['teacher']['name']
-                    room = f"{distribution['room']['name']} ({distribution['room']['number']})"
+                    room = f"{distribution['room']['name']} ({distribution['room']['room_number']})"
 
                     # Style elective vs. core subjects differently
                     if session_type == 'Elective':
@@ -1115,14 +1265,15 @@ def download_classroom_timetable(request, pk):
                     if font:
                         cell.font = font
                     cell.value += text
-
-    # Create the HTTP response with the Excel file
-    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition'] = f'attachment; filename="{classroom.standard.short_name}-{classroom.division}_timetable.xlsx"'
-    wb.save(response)
-
+    
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    response = HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
     return response
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

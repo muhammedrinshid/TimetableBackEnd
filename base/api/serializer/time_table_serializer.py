@@ -71,14 +71,23 @@ class TeacherSessionSerializer(serializers.ModelSerializer):
 
 class InstructorSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='teacher.name')
-    profile_image = serializers.CharField(source='teacher.profile_image.url')
+    profile_image = serializers.SerializerMethodField()  # Use a custom method to handle the URL
     surname = serializers.CharField(source='teacher.surname')
     teacher_id = serializers.CharField(source='teacher.teacher_id')
     id = serializers.CharField(source='teacher.id')
-    qualified_subjects=SubjectSerializer(source='teacher.qualified_subjects', many=True, read_only=True,)
+    qualified_subjects = SubjectSerializer(source='teacher.qualified_subjects', many=True, read_only=True)
+
     class Meta:
         model = Tutor
-        fields = ['id','name', 'profile_image', 'surname', 'teacher_id','qualified_subjects']
+        fields = ['id', 'name', 'profile_image', 'surname', 'teacher_id', 'qualified_subjects']
+
+    def get_profile_image(self, obj):
+        # Check if there is a profile image and return its URL, otherwise   return None or a default URL
+        profile_image = obj.teacher.profile_image
+        if profile_image:
+            return profile_image.url
+        return None  # Or you can return a default image URL if preferred
+    
 
 class TeacherDayTimetableSerializer(serializers.Serializer):
     instructor = InstructorSerializer()
@@ -183,6 +192,7 @@ class StudentSessionSerializer(serializers.Serializer):
             return None
         
         first_lesson = obj[0]
+        
         
         # Return the elective_group_id if it's an elective lesson, else None
         return first_lesson.elective_group_id if first_lesson.is_elective and first_lesson.elective_group_id else None

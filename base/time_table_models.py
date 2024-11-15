@@ -134,7 +134,7 @@ class Lesson(models.Model):
     elective_subject_name=models.CharField(max_length=100,null=True,blank=True)
     elective_group_id=models.UUIDField(null=True,blank=True)
     def __str__(self):
-        return f"{self.course.name} - {self.timeslot}"
+        return f"{self.course.name} - {self.timeslot} {self.elective_group_id}"
 
     
 class LessonClassSection(models.Model):
