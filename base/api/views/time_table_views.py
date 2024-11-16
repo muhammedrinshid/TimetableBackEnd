@@ -388,12 +388,15 @@ def get_teacher_day_timetable(user, timetable, day_of_week):
     return day_timetable
 
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_whole_teacher_single_day_timetable(request, day_of_week):
     user = request.user
-    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
+
+    if not timetable:
+        return Response([], status=200)  # Return an empty array if no default timetable exists
+
     day_timetable = get_teacher_day_timetable(user, timetable, day_of_week)
     
     serializer = TeacherDayTimetableSerializer(day_timetable, many=True)
@@ -408,14 +411,17 @@ def get_whole_teacher_single_day_timetable(request, day_of_week):
 
 
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_whole_teacher_default_week_timetable(request,pk=None):
     user = request.user
     if pk is None:
-        timetable = get_object_or_404(Timetable, school=user, is_default=True)
+      timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
     else:
-        timetable = get_object_or_404(Timetable, id=pk,school=user)
+        timetable = Timetable.objects.get(school=user, id=pk)
+    if not timetable:
+        return Response({}, status=200)
     # Get working days
     working_days = user.working_days
 
@@ -552,7 +558,10 @@ def get_student_day_timetable(user, timetable, day_of_week):
 @permission_classes([IsAuthenticated])
 def get_whole_student_single_day_timetable(request, day_of_week):
     user = request.user
-    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
+
+    if not timetable:
+        return Response([], status=200)
     day_timetable = get_student_day_timetable(user, timetable, day_of_week)
     
     serializer = StudentDayTimetableSerializer(day_timetable, many=True)
@@ -564,7 +573,10 @@ def get_whole_student_default_week_timetable(request,pk=None):
     user = request.user
 
     if pk is None:
-        timetable = get_object_or_404(Timetable, school=user, is_default=True)
+        timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
+
+        if not timetable:
+            return Response({}, status=200)
     else:
         timetable = get_object_or_404(Timetable, id=pk,school=user)
     
@@ -624,7 +636,10 @@ def get_whole_student_week_timetable(request, pk):
 @permission_classes([IsAuthenticated])
 def get_classroom_week_timetable(request,pk):
     user = request.user
-    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
+
+    if not timetable:
+        return Response([], status=200)
 
     if pk is not None:
         try:
@@ -677,7 +692,10 @@ def get_classroom_week_timetable(request,pk):
 def get_teacher_week_timetable(request,pk):
     # Get all teachers for the school
     user = request.user
-    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
+
+    if not timetable:
+        return Response([], status=200)
 
     if pk is not None:
         try:
@@ -959,7 +977,10 @@ def download_classroom_timetable(request, pk):
     Use ?format=pdf query parameter for PDF format.
     """
     user = request.user
-    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
+
+    if not timetable:
+        return Response({"warning": "You have no default timetable.", "data": []}, status=200)  # Return warning with empty data
     file_type = request.query_params.get('file_type', '').lower()
 
     try:
@@ -1279,7 +1300,10 @@ def generate_classroom_excel_timetable(timetable_data, classroom, filename):
 @permission_classes([IsAuthenticated])
 def download_teacher_timetable(request, pk=None):
     user = request.user
-    timetable = get_object_or_404(Timetable, school=user, is_default=True)
+    timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
+
+    if not timetable:
+        return Response({"warning": "You have no default timetable.", "data": []}, status=200)  # Return warning with empty data
 
     if pk is not None:
         try:
