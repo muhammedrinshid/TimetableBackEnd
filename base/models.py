@@ -178,6 +178,7 @@ class UserConstraintSettings(models.Model):
     ensure_teacher_assigned = models.BooleanField(default=True)
     ensure_timeslot_assigned = models.BooleanField(default=True)
     consecutive_multi_block_lessons = models.BooleanField(default=False)
+    avoid_first_half_period = models.BooleanField(default=False) 
 
     # Soft constraints
     tutor_free_period_constraint= models.BooleanField(default=True)
@@ -189,7 +190,8 @@ class UserConstraintSettings(models.Model):
     avoid_continuous_subjects = models.BooleanField(default=True)
     avoid_continuous_teaching = models.BooleanField(default=True)
     avoid_consecutive_elective_lessons = models.BooleanField(default=True)
-
+    avoid_elective_in_first_period = models.BooleanField(default=True)  
+    
     def __str__(self):
         return f"Constraint Settings for {self.user.username}"    
 
@@ -485,7 +487,7 @@ class ClassSubject(models.Model):
     elective_or_core = models.BooleanField(default=False)
     elective_group = models.ForeignKey(ElectiveGroup, related_name="class_subjects", null=True, blank=True, on_delete=models.SET_NULL)
     class_room=models.ForeignKey(Classroom,on_delete=models.CASCADE,related_name="class_subjects",blank=False)
-    
+    prevent_first_half_period =models.BooleanField(default=False)
     
     @property
     def subjects_with_assigned_teacher(self):

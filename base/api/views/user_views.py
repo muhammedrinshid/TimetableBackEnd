@@ -141,6 +141,7 @@ def user_constraint_settings(request):
         return Response(serializer.data)
 
     elif request.method == 'PUT':
+        print(request.data)
         serializer = UserConstraintSettingsSerializer(constraint_settings, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()

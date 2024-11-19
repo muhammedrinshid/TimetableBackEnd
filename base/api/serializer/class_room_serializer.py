@@ -75,7 +75,7 @@ class ClassSubjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClassSubject
-        fields = ['school', 'class_room', 'name', 'elective_or_core', 'subjects', 'lessons_per_week','multi_block_lessons']
+        fields = ['school', 'class_room', 'name', 'elective_or_core', 'subjects', 'lessons_per_week','multi_block_lessons','prevent_first_half_period']
 
     def create(self, validated_data):
         subjects_data = validated_data.pop('subjects')
@@ -157,7 +157,7 @@ class ClassSubjectDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClassSubject
-        fields = ['id', 'name', 'lessons_per_week', 'is_elective', 'elective_group', 'options', 'teacher','special_rooms','multi_block_lessons']
+        fields = ['id', 'name', 'lessons_per_week', 'is_elective', 'elective_group', 'options', 'teacher','special_rooms','multi_block_lessons','prevent_first_half_period']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -311,7 +311,7 @@ class ClassSubjectUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClassSubject
-        fields = ['name', 'lessons_per_week', 'subjects','multi_block_lessons']
+        fields = ['name', 'lessons_per_week', 'subjects','multi_block_lessons','prevent_first_half_period']
 
     def validate(self, data):
         if 'subjects' not in data:
@@ -342,6 +342,7 @@ class ClassSubjectUpdateSerializer(serializers.ModelSerializer):
             
             instance.lessons_per_week = validated_data.get('lessons_per_week', instance.lessons_per_week)
             instance.multi_block_lessons = validated_data.get('multi_block_lessons', instance.multi_block_lessons)
+            instance.prevent_first_half_period = validated_data.get('prevent_first_half_period', instance.prevent_first_half_period)
             instance.save()
 
             # Delete all current options

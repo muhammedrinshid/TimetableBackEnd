@@ -28,6 +28,8 @@ def dynamic_constraint_provider(user_settings,user):
             constraints.append(ensure_teacher_assigned(constraint_factory))
         if user_settings.ensure_timeslot_assigned:
             constraints.append(ensure_timeslot_assigned(constraint_factory))
+        if user_settings.avoid_first_half_period:
+            constraints.append(avoid_first_half_period_allocation(constraint_factory,periods_per_day=user.teaching_slots))
         # if user_settings.consecutive_multi_block_lessons:
         #     constraints.append(consecutive_multi_block_lessons(constraint_factory))
 
@@ -50,6 +52,8 @@ def dynamic_constraint_provider(user_settings,user):
             constraints.append(avoid_continuous_teaching(constraint_factory))
         if user_settings.avoid_consecutive_elective_lessons:
             constraints.append(avoid_consecutive_elective_lessons(constraint_factory))
+        if user_settings.avoid_elective_in_first_period :
+            constraints.append(avoid_elective_in_first_period(constraint_factory))
 
         return constraints
 
@@ -104,8 +108,14 @@ def elective_group_timeslot_constraint(constraint_factory: ConstraintFactory):
         .penalize("Elective group timeslot mismatch", HardSoftScore.ONE_HARD,
                   lambda lesson1, lesson2: 1 if lesson1.timeslot != lesson2.timeslot else 0)
         
-        
-        
+def avoid_first_half_period_allocation(constraint_factory: ConstraintFactory, periods_per_day):
+    # Calculate the maximum period number for the first half of the day
+    first_half_period_limit = periods_per_day // 2
+    
+    return constraint_factory.for_each(Lesson) \
+        .filter(lambda lesson: lesson.prevent_first_half_period and lesson.timeslot.period <= first_half_period_limit) \
+        .penalize("Avoid lessons in the first half for specific lessons", HardSoftScore.ofHard(1))
+
         
         
         
@@ -234,3 +244,10 @@ def ensure_tutor_daily_working_period(constraint_factory: ConstraintFactory):
                  ConstraintCollectors.countBi()) \
         .filter(lambda tutor_day, lesson_count: lesson_count == 0) \
         .penalize("Tutor should have at least one working period per day", HardSoftScore.ofSoft(500))
+        
+        
+        
+def avoid_elective_in_first_period(constraint_factory: ConstraintFactory):
+    return constraint_factory.for_each(Lesson) \
+        .filter(lambda lesson: lesson.is_elective and lesson.timeslot.period == 1) \
+        .penalize("Avoid elective lessons in the first period", HardSoftScore.ofSoft(100))

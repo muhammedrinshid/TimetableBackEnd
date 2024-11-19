@@ -216,7 +216,7 @@ class TutorManager:
 
 @planning_entity
 class Lesson:
-    def __init__(self, id, subject, available_teachers, class_sections, lesson_no, available_rooms,grade_level,multi_block_lessons=1, is_elective=False, allotted_room=None, timeslot=None, allotted_teacher=None, elective=None, students_distribution=None, elective_subject_name=''):
+    def __init__(self, id, subject, available_teachers, class_sections, lesson_no, available_rooms,grade_level,multi_block_lessons=1,prevent_first_half_period=False, is_elective=False, allotted_room=None, timeslot=None, allotted_teacher=None, elective=None, students_distribution=None, elective_subject_name=''):
         self.id = id
         self.subject = subject
         self.available_teachers = available_teachers
@@ -229,7 +229,7 @@ class Lesson:
         self.elective_subject_name = elective_subject_name
         self.grade_level=grade_level
         self.multi_block_lessons=multi_block_lessons
-        
+        self.prevent_first_half_period=prevent_first_half_period
         # Planning variables
         self.allotted_teacher = allotted_teacher
         self.allotted_room = allotted_room

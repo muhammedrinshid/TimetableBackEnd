@@ -102,6 +102,7 @@ def get_all_elective_group_of_user(user):
         elective_subject_name=""
         lessons_per_week=0
         multi_block_lessons=1
+        prevent_first_half_period=False
         if first_class_subject:
             elective_subject_name = first_class_subject.name
             lessons_per_week = first_class_subject.lessons_per_week
@@ -112,6 +113,7 @@ def get_all_elective_group_of_user(user):
             "lessons_per_week":lessons_per_week,
             'multi_block_lessons':multi_block_lessons,
             "elective_subject_name":elective_subject_name,
+            "prevent_first_half_period":prevent_first_half_period,
             "prefered_rooms_for_overflow":group.preferred_rooms.all()
         })
     return(result)
@@ -328,6 +330,7 @@ def create_core_lesson_ojbects(school):
                                 lesson_no=lesson_no,
                                 elective_subject_name=class_subject.name,
                                 multi_block_lessons=class_subject.multi_block_lessons,
+                                prevent_first_half_period=class_subject.prevent_first_half_period,
                                 grade_level=grade_obj
 
                             )

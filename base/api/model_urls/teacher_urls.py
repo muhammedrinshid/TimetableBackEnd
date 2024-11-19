@@ -8,5 +8,7 @@ urlpatterns = [
 
         path('teachers/',teacher_views.teachers , name='teachers'),
         path('school-subject-teacher-count/', teacher_views.subject_teacher_count, name='school-subject-teacher-count'),
-
+        path('generate-teacher-template/',      teacher_views.generate_teacher_template, name='generate_teacher_template'),
+        path('process-teacher-template/',      teacher_views.process_teacher_template, name='process_teacher_template'),
 ]
+
