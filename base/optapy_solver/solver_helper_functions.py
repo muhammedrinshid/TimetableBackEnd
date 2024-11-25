@@ -1,5 +1,4 @@
 
-from ..time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson
 from ..models import ElectiveGroup,Classroom,Standard,Teacher,Subject,Grade,ClassSubject,ClassSubjectSubject,Room
 from collections import defaultdict
 import uuid
@@ -250,7 +249,8 @@ def create_elective_lesson_ojbects(data, school):
                 id=classroom.id,
                 standard=standard_obj,
                 division=classroom.division,
-                name=classroom.name
+                name=classroom.name,
+                class_teacher=None
             )
             class_sections.append(classroom_obj)
 
@@ -298,14 +298,19 @@ def create_core_lesson_ojbects(school):
             standard_obj=StandardLevelManager.get_or_create(id=standard.id,short_name=standard.short_name)
             
             for classroom in Classroom.objects.filter(standard=standard):
+                class_teacher=classroom.class_teacher
+                class_teacher_obj=None
+                if class_teacher is not None:
+                    class_teacher_obj=TutorManager.get_or_create(id=class_teacher.id,name=class_teacher.name,min_lessons_per_week=class_teacher.min_lessons_per_week,max_lessons_per_week=class_teacher.max_lessons_per_week)
+               
                 classroom_obj=ClassSectionManager.get_or_create(
-                    id=classroom.id,standard=standard_obj,division=classroom.division,name=classroom.name
+                    id=classroom.id,standard=standard_obj,division=classroom.division,name=classroom.name,class_teacher=class_teacher_obj
                 )
                 room=classroom.room
                 room_obj=None
                 if room is not None:
                     room_obj=ClassroomAssignmentManager.get_or_create(id=room.id,name=room.name,capacity=room.capacity,room_type=room.room_type,occupied=room.occupied)
-                    
+              
                 for class_subject in ClassSubject.objects.filter(class_room=classroom):
                     if class_subject.be_included_in_first_selection:
                         subject = class_subject.subjects.first()

@@ -122,11 +122,21 @@ class User(AbstractUser):
     def all_classrooms_have_rooms(self):
         return not self.classrooms.filter(room__isnull=True).exists()
     @property
+    def all_classrooms_have_class_teacher(self):
+        # If 'assign_class_teacher_at_first_period' is false, consider timetable ready
+        if not self.constraint_settings.assign_class_teacher_at_first_period:
+            return True
+        
+        # Use the 'is_class_teacher_assigned' property from Classroom model
+        return not self.classrooms.filter(class_teacher__isnull=True).exists()
+
+    @property
     def is_ready_for_timetable(self):
         return (self.all_classes_subject_assigned_atleast_one_teacher and 
                 self.all_classes_assigned_subjects and 
                 self.all_class_subjects_have_correct_elective_groups and
-                self.all_classrooms_have_rooms
+                self.all_classrooms_have_rooms and
+                self.all_classrooms_have_class_teacher
                 ) 
 
 
@@ -162,9 +172,66 @@ class User(AbstractUser):
         verbose_name = 'School'
         verbose_name_plural = 'Schools'
         
-     
-     
-     
+class DayChoices(models.TextChoices):
+    MONDAY = 'MON', 'Monday'
+    TUESDAY = 'TUE', 'Tuesday'
+    WEDNESDAY = 'WED', 'Wednesday'
+    THURSDAY = 'THU', 'Thursday'
+    FRIDAY = 'FRI', 'Friday'
+    SATURDAY = 'SAT', 'Saturday'
+    SUNDAY = 'SUN', 'Sunday'
+
+class UserAcademicSchedule(models.Model):
+  
+    user = models.OneToOneField(
+        User, 
+        on_delete=models.CASCADE,
+        related_name='academic_schedule'
+    )
+    average_students_allowed = models.PositiveIntegerField(
+        default=40, 
+        null=True, 
+        blank=True
+    )
+    period_name = models.CharField(
+        max_length=50, 
+        default="session", 
+        null=True, 
+        blank=True
+    )
+
+    def __str__(self):
+        return f"Schedule for {self.user.username}"
+
+    @property
+    def total_weekly_teaching_slots(self):
+        """
+        Calculate total teaching slots across all working days in the week
+        """
+        return sum(
+            day_schedule.teaching_slots 
+            for day_schedule in self.day_schedules.all()
+        )
+
+class DaySchedule(models.Model):
+    schedule = models.ForeignKey(
+        'UserAcademicSchedule', 
+        on_delete=models.CASCADE, 
+        related_name='day_schedules'
+    )
+    day = models.CharField(
+        max_length=3, 
+        choices=DayChoices.choices
+    )
+    teaching_slots = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        unique_together = ['schedule', 'day']
+        ordering = ['day']
+
+    def __str__(self):
+        return f"{self.get_day_display()} - {self.teaching_slots} slots"    
+    
 class UserConstraintSettings(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='constraint_settings')
 
@@ -191,11 +258,13 @@ class UserConstraintSettings(models.Model):
     avoid_continuous_teaching = models.BooleanField(default=True)
     avoid_consecutive_elective_lessons = models.BooleanField(default=True)
     avoid_elective_in_first_period = models.BooleanField(default=True)  
+    assign_class_teacher_at_first_period = models.BooleanField(default=False)
+    same_teacher_first_period_constraint = models.BooleanField(default=False)
     
     def __str__(self):
         return f"Constraint Settings for {self.user.username}"    
 
-
+    
      
      
      
@@ -416,7 +485,8 @@ class Classroom(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     division = models.CharField(max_length=10)
     room = models.OneToOneField(Room, null=True, blank=True, related_name="classroom", on_delete=models.SET_NULL)
-    
+    class_teacher = models.OneToOneField(Teacher, null=True, blank=True, related_name="classroom_teacher", on_delete=models.SET_NULL)
+
 
    
     @property
@@ -424,8 +494,12 @@ class Classroom(models.Model):
         result = self.class_subjects.aggregate(total_lessons=Sum('lessons_per_week'))
         return result['total_lessons'] or 0
     @property
+    def is_class_teacher_assigned(self):
+        """Checks if a class teacher is assigned to this classroom."""
+        return self.class_teacher is not None
+    @property
     def is_fully_allocated_subjects_to_class_rooms(self):
-        number_of_lessons_in_week=self.school.teaching_slots*len(self.school.working_days)
+        number_of_lessons_in_week=self.school.academic_schedule.total_weekly_teaching_slots
 
         return self.total_lessons_per_week == number_of_lessons_in_week
     @property

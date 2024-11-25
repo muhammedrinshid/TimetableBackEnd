@@ -25,14 +25,14 @@ urlpatterns = [
 
     # Default Weekly Timetable View (for teachers and students)
     # - Retrieve the entire weekly timetable of the default timetable, specific to either teachers or students
-    path('default-teacher-view-week/', time_table_views.get_whole_teacher_default_week_timetable, name='default_teachers_week_timetable'),
-    path('default-student-view-week/', time_table_views.get_whole_student_default_week_timetable, name='default_students_week_timetable'),
+    path('default-teacher-view-week/', time_table_views.fetch_all_teachers_weekly_timetable, name='default_teachers_week_timetable'),
+    path('default-student-view-week/', time_table_views.fetch_all_students_weekly_timetable, name='default_students_week_timetable'),
 
     # Weekly Timetable for Editing (for teachers and students)
     # - Fetch the entire weekly timetable for editing purposes
     # - Separate view for submitting edited timetable for students
-    path('edit-teacher-week-timetable/<str:pk>/', time_table_views.get_whole_teacher_default_week_timetable, name='teacher_week_timetable_for_edit'),
-    path('edit-student-week-timetable/<str:pk>/', time_table_views.get_whole_student_default_week_timetable, name='student_week_timetable_for_edit'),
+    path('edit-teacher-week-timetable/<str:pk>/', time_table_views.fetch_all_teachers_weekly_timetable, name='teacher_week_timetable_for_edit'),
+    path('edit-student-week-timetable/<str:pk>/', time_table_views.fetch_all_students_weekly_timetable, name='student_week_timetable_for_edit'),
     # Submit edited student timetable
     path('submit-edit-student-week-timetable/<str:pk>/', time_table_views.submit_student_week_timetable_edits, name='submit_student_week_timetable_edits'),
     # Submit edited student timetable
@@ -42,8 +42,8 @@ urlpatterns = [
     # Weekly Timetable for Specific Entities
     # - Retrieve the weekly timetable for a specific teacher, student, or classroom by its unique identifier
     # - 'pk' represents the UUID of the teacher, student, or classroom
-    path('teacher-view-week/<str:pk>/', time_table_views.get_whole_teacher_week_timetable, name='teacher_week_timetable'),
-    path('student-view-week/<str:pk>/', time_table_views.get_whole_student_week_timetable, name='student_week_timetable'),
+    path('teacher-view-week/<str:pk>/', time_table_views.fetch_all_teachers_weekly_timetable, name='teacher_week_timetable'),
+    path('student-view-week/<str:pk>/', time_table_views.fetch_all_students_weekly_timetable, name='student_week_timetable'),
     
     
     path('teacher-timetable-week/<str:pk>/', time_table_views.get_teacher_week_timetable, name='week_timetable_teacher'),

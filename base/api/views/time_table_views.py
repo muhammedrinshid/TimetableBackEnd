@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from ...optapy_solver.solver import run_optimization
-from ...time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection
+from ...time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection,TimeTableDaySchedule
 from django.db import transaction
 
 from django.db.models import Prefetch
@@ -13,7 +13,7 @@ from collections import defaultdict
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from ...models import  Teacher, Subject, Room,Classroom,Standard
-from ..serializer.time_table_serializer import TeacherDayTimetableSerializer,StudentWeekTimetableSerializer,StudentDayTimetableSerializer,WholeTeacherWeekTimetableSerializer,TeacherWeekTimetableSerializer,ClassroomWeekTimetableSerializer
+from ..serializer.time_table_serializer import TeacherDayTimetableSerializer,StudentWeekTimetableSerializer,StudentDayTimetableSerializer,WholeTeacherWeekTimetableSerializer,TimeTableDayScheduleSerializer,TeacherWeekTimetableSerializer,ClassroomWeekTimetableSerializer
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from openpyxl import Workbook
@@ -75,7 +75,14 @@ def save_optimization_results(user, solution,score,hard_score,soft_score):
                 score=score
                 
             )
-
+            academic_schedule=user.academic_schedule
+            for day_schedule in academic_schedule.day_schedules.all():
+                TimeTableDaySchedule.objects.create(
+                    table=timetable,
+                    day=day_schedule.day,
+                    teaching_slots=day_schedule.teaching_slots
+                )
+             
             for lesson in solution.get_lesson_list():
                 # Process Course
                 try:
@@ -270,7 +277,9 @@ def check_class_subjects(request):
         "all_classes_assigned_subjects": user.all_classes_assigned_subjects,
         "all_classes_subject_assigned_atleast_one_teacher": user.all_classes_subject_assigned_atleast_one_teacher,
         "all_classrooms_have_rooms": user.all_classrooms_have_rooms,
+        "all_classrooms_have_class_teacher": user.all_classrooms_have_class_teacher,  # Added this line
     }
+
 
     reasons = []
 
@@ -284,6 +293,8 @@ def check_class_subjects(request):
         reasons.append("Not all class subjects have at least one assigned teacher.")
     if not user.all_classrooms_have_rooms:
         reasons.append("Not all classroom has specific room")
+    if not user.all_classrooms_have_class_teacher:
+        reasons.append("Not all classrooms have a class teacher.")  # Added this line
 
     response_data = {
         "results": results,
@@ -360,7 +371,7 @@ def timetable_detail(request, timetable_id):
 
 
 # fetching results
-def get_teacher_day_timetable(user, timetable, day_of_week):
+def get_teacher_day_timetable(user, timetable,day_schedule):
     teachers = Teacher.objects.filter(school=user)
     day_timetable = []
     
@@ -368,12 +379,12 @@ def get_teacher_day_timetable(user, timetable, day_of_week):
         tutor = Tutor.objects.filter(teacher=teacher, timetable=timetable).first()
         
         if tutor:
-            sessions = [[] for _ in range(timetable.number_of_lessons)]
+            sessions = [[] for _ in range(day_schedule.teaching_slots)]
             
             lessons = Lesson.objects.filter(
                 timetable=timetable,
                 allotted_teacher=tutor,
-                timeslot__day_of_week=day_of_week
+                timeslot__day_of_week=day_schedule.day
             ).order_by('timeslot__period')
             
             for lesson in lessons:
@@ -387,34 +398,112 @@ def get_teacher_day_timetable(user, timetable, day_of_week):
     
     return day_timetable
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_whole_teacher_single_day_timetable(request, day_of_week):
     user = request.user
-    timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
 
+    # Check if the timetable exists and is default
+    timetable = Timetable.objects.filter(school=user, is_default=True).first()
     if not timetable:
-        return Response([], status=200)  # Return an empty array if no default timetable exists
+        return Response(
+            {"error": "No default timetable found for the user's school."},
+            status=404,
+        )
 
-    day_timetable = get_teacher_day_timetable(user, timetable, day_of_week)
-    
+    try:
+        # Check if the day schedule exists for the provided day_of_week
+        day_schedule = timetable.day_schedules.get(day=day_of_week)
+    except TimeTableDaySchedule.DoesNotExist:
+            response_data = {
+                "day_timetable": [],
+                "day_schedules": {
+                    "day": day_of_week,
+                    "teaching_slots": 0,
+                },
+            }
+            return Response(response_data)
+
+    try:
+        # Get the teacher's day timetable
+        day_timetable = get_teacher_day_timetable(user, timetable, day_schedule)
+    except Exception as e:
+        return Response(
+            {"error": "An error occurred while fetching the teacher's day timetable.", "details": str(e)},
+            status=500,
+        )
+
+    # Serialize the data
     serializer = TeacherDayTimetableSerializer(day_timetable, many=True)
     serialized_data = serializer.data  # Access serialized data
 
-    # Modify serialized data
+    day_schedule_serializer = TimeTableDayScheduleSerializer(day_schedule)
     for data in serialized_data:
-        if "instructor" in data:
-            data["instructor"]["present"] = [True] * user.teaching_slots
+            if "instructor" in data:
+                data["instructor"]["present"] = [True] * day_schedule.teaching_slots
+    # Prepare response data
+    response_data = {
+        "day_timetable": serializer.data,
+        "day_schedules": day_schedule_serializer.data,
+    }
 
-    return Response(serialized_data)
+    return Response(response_data)
 
 
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_whole_teacher_default_week_timetable(request,pk=None):
+def get_whole_student_single_day_timetable(request, day_of_week):
+    user = request.user
+
+    # Check if the timetable exists and is default
+    timetable = Timetable.objects.filter(school=user, is_default=True).first()
+    if not timetable:
+        return Response(
+            {"error": "No default timetable found for the user's school."},
+            status=404,
+        )
+
+    try:
+        # Check if the day schedule exists for the provided day_of_week
+        day_schedule = timetable.day_schedules.get(day=day_of_week)
+    except TimeTableDaySchedule.DoesNotExist:
+        response_data = {
+                "day_timetable": [],
+                "day_schedules": {
+                    "day": day_of_week,
+                    "teaching_slots": 0,
+                },
+            }
+        return Response(response_data)
+
+    try:
+        # Get the student's day timetable
+        day_timetable = get_student_day_timetable(user, timetable, day_schedule)
+    except Exception as e:
+        return Response(
+            {"error": "An error occurred while fetching the student's day timetable.", "details": str(e)},
+            status=500,
+        )
+
+    # Serialize the data
+    serializer = StudentDayTimetableSerializer(day_timetable, many=True)
+    day_schedule_serializer = TimeTableDayScheduleSerializer(day_schedule)
+
+    # Prepare response data
+    response_data = {
+        "day_timetable": serializer.data,
+        "day_schedules": day_schedule_serializer.data,
+    }
+
+    return Response(response_data)
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def fetch_all_teachers_weekly_timetable(request,pk=None):
     user = request.user
     if pk is None:
       timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
@@ -423,67 +512,35 @@ def get_whole_teacher_default_week_timetable(request,pk=None):
     if not timetable:
         return Response({}, status=200)
     # Get working days
-    working_days = user.working_days
+    day_schedules = timetable.day_schedules.all() if timetable else []
 
     week_timetable = {}
-    for day_code in working_days:
-        day_name =day_code
-        day_timetable = get_teacher_day_timetable(user, timetable, day_name)
-        week_timetable[day_code] = day_timetable
+    for day_schedule in day_schedules:
+        day_timetable = get_teacher_day_timetable(user, timetable, day_schedule)
+        week_timetable[day_schedule.day] = day_timetable
     
-    serializer = WholeTeacherWeekTimetableSerializer(week_timetable, working_days=working_days)
+    serializer = WholeTeacherWeekTimetableSerializer(week_timetable,working_days=[day_schedule.day for day_schedule in day_schedules])
+    day_schedule_serializer = TimeTableDayScheduleSerializer(day_schedules, many=True)
+
     response_data = {
-        "week_timetable": serializer.data,
-        "lessons_per_day": timetable.number_of_lessons
-    }
+            'week_timetable': serializer.data,
+            'day_schedules': day_schedule_serializer.data
+        }
     return Response(response_data)
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_whole_teacher_week_timetable(request, pk):
-    user = request.user
+
+
+
+
+
+
+
+
+
+def get_student_day_timetable(user, timetable, day_schedule):
+
     
-    # Check if pk is provided
-    if pk is None:
-        return Response({"error": "Timetable ID is required"}, status=400)
-    
-    try:
-        # Get the timetable instance
-        timetable = Timetable.objects.get(school=user, id=pk)
-    except Timetable.DoesNotExist:
-        return Response({"error": "Timetable not found"}, status=404)
-    except Exception as e:
-        return Response({"error": "Internal Server Error"}, status=500)
-    
-    # Get working days for the user
-    working_days = user.working_days
-    
-    # Initialize week timetable
-    week_timetable = {day: get_teacher_day_timetable(user, timetable, day) for day in working_days}
-    
-    # Serialize the week timetable
-    serializer = WholeTeacherWeekTimetableSerializer(week_timetable, working_days=working_days)
-    
-    # Return the response
-    return Response(serializer.data)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def get_student_day_timetable(user, timetable, day_of_week):
     class_sections = ClassSection.objects.filter(
         timetable=timetable
     ).select_related(
@@ -493,7 +550,7 @@ def get_student_day_timetable(user, timetable, day_of_week):
             'lessons',
             queryset=Lesson.objects.filter(
                 timetable=timetable,
-                timeslot__day_of_week=day_of_week
+                timeslot__day_of_week=day_schedule.day
             ).select_related(
                 'course', 'allotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
             ).prefetch_related(
@@ -516,7 +573,7 @@ def get_student_day_timetable(user, timetable, day_of_week):
         
         # Now process each period's lessons into groups
         formatted_sessions = []
-        for period in range(timetable.number_of_lessons):
+        for period in range(day_schedule.teaching_slots):
             lessons = period_lessons[period]
             if not lessons:
                 formatted_sessions.append([])  # Empty period
@@ -554,22 +611,11 @@ def get_student_day_timetable(user, timetable, day_of_week):
 
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_whole_student_single_day_timetable(request, day_of_week):
-    user = request.user
-    timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
 
-    if not timetable:
-        return Response([], status=200)
-    day_timetable = get_student_day_timetable(user, timetable, day_of_week)
-    
-    serializer = StudentDayTimetableSerializer(day_timetable, many=True)
-    return Response(serializer.data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_whole_student_default_week_timetable(request,pk=None):
+def fetch_all_students_weekly_timetable(request,pk=None):
     user = request.user
 
     if pk is None:
@@ -580,51 +626,90 @@ def get_whole_student_default_week_timetable(request,pk=None):
     else:
         timetable = get_object_or_404(Timetable, id=pk,school=user)
     
-    working_days = user.working_days
+    day_schedules = timetable.day_schedules.all() if timetable else []
 
     week_timetable = {}
-    for day_code in working_days:
-        day_timetable = get_student_day_timetable(user, timetable, day_code)
-        week_timetable[day_code] = day_timetable
+    for day_schedule in day_schedules:
+        day_timetable = get_student_day_timetable(user, timetable, day_schedule)
+        week_timetable[day_schedule.day] = day_timetable
     
-    serializer = StudentWeekTimetableSerializer(week_timetable, working_days=working_days)
+    serializer = StudentWeekTimetableSerializer(week_timetable,  working_days=[day_schedule.day for day_schedule in day_schedules])
+   
+    day_schedule_serializer = TimeTableDayScheduleSerializer(day_schedules, many=True)
+
     response_data = {
-        "week_timetable": serializer.data,
-        "lessons_per_day": timetable.number_of_lessons
-    }
+            'week_timetable': serializer.data,
+            'day_schedules': day_schedule_serializer.data
+        }
     return Response(response_data)
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_whole_student_week_timetable(request, pk):
-    user = request.user
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def get_whole_student_week_timetable(request, pk):
+#     user = request.user
     
-    # Check if pk is provided
-    if pk is None:
-        return Response({"error": "Timetable ID is required"}, status=400)
+#     # Check if pk is provided
+#     if pk is None:
+#         return Response({"error": "Timetable ID is required"}, status=400)
     
-    # Get the timetable instance
-    try:
-        timetable = Timetable.objects.get(school=user, id=pk)
-    except Timetable.DoesNotExist:
-        return Response({"error": "Timetable not found"}, status=404)
+#     # Get the timetable instance
+#     try:
+#         timetable = Timetable.objects.get(school=user, id=pk)
+#     except Timetable.DoesNotExist:
+#         return Response({"error": "Timetable not found"}, status=404)
     
-    # Get working days for the user
-    working_days = user.working_days
+#     # Get working days for the user
+#     day_schedules = timetable.day_schedules.all() if timetable else []
     
-    # Initialize week timetable
-    week_timetable = {}
+#     # Initialize week timetable
+#     week_timetable = {}
     
-    # Iterate over working days
-    for day_code in working_days:
-        day_timetable = get_student_day_timetable(user, timetable, day_code)
-        week_timetable[day_code] = day_timetable
+#     # Iterate over working days
+#     for day_schedule in day_schedules:
+#         day_timetable = get_student_day_timetable(user, timetable, day_schedule)
+#         week_timetable[day_schedules.day] = day_timetable
     
-    # Serialize the week timetable
-    serializer = StudentWeekTimetableSerializer(week_timetable, working_days=working_days)
+#     # Serialize the week timetable
+#     serializer = StudentWeekTimetableSerializer(week_timetable, working_days=[day_schedule.day for day_schedule in day_schedules])
     
-    # Return the response
-    return Response(serializer.data)
+#     # Return the response
+#     return Response(serializer.data)
+
+
+
+
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def get_whole_teacher_week_timetable(request, pk):
+#     user = request.user
+    
+#     # Check if pk is provided
+#     if pk is None:
+#         return Response({"error": "Timetable ID is required"}, status=400)
+    
+#     try:
+#         # Get the timetable instance
+#         timetable = Timetable.objects.get(school=user, id=pk)
+#     except Timetable.DoesNotExist:
+#         return Response({"error": "Timetable not found"}, status=404)
+#     except Exception as e:
+#         return Response({"error": "Internal Server Error"}, status=500)
+    
+#     # Get working days for the user
+#     day_schedules = timetable.day_schedules.all() if timetable else []
+    
+#     # Initialize week timetable
+#     week_timetable = {day_schedules.day: get_teacher_day_timetable(user, timetable, day_schedule) for day_schedule in day_schedules}
+    
+#     # Serialize the week timetable
+#     serializer = WholeTeacherWeekTimetableSerializer(week_timetable,working_days=[day_schedule.day for day_schedule in day_schedules])
+#     day_schedule_serializer = TimeTableDayScheduleSerializer(day_schedules, many=True)
+
+#     # Return the response
+#     return Response(serializer.data)
+
 
 
 
@@ -639,7 +724,10 @@ def get_classroom_week_timetable(request,pk):
     timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
 
     if not timetable:
-        return Response([], status=200)
+        return Response({
+            'day_timetable': [],
+            'day_schedules': []
+        }, status=200)
 
     if pk is not None:
         try:
@@ -651,17 +739,17 @@ def get_classroom_week_timetable(request,pk):
         except  ClassSection.DoesNotExist:
             
             return Response({'error': 'No classroom found for this school.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-    working_days = user.working_days
+    day_schedules = timetable.day_schedules.all() if timetable else []
 
     day_timetable = []
     
     
     
     
-    for day_code in working_days:
+    for day_schedule in day_schedules:
         day_lessons = Lesson.objects.filter(
             timetable=timetable,
-            timeslot__day_of_week=day_code,
+            timeslot__day_of_week=day_schedule.day,
             class_sections__in=[classsection]
         ).select_related(
             'course', 'allotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
@@ -672,17 +760,23 @@ def get_classroom_week_timetable(request,pk):
         for lesson in day_lessons:
             sessions[lesson.timeslot.period - 1].append(lesson)
 
-        formatted_sessions = [sessions[i] for i in range(timetable.number_of_lessons)]
+        formatted_sessions = [sessions[i] for i in range(day_schedule.teaching_slots)]
 
             
         
 
         day_timetable.append({
-            'day': day_code,
+            'day': day_schedule.day,
             'sessions': formatted_sessions
         })
+    day_schedule_serializer = TimeTableDayScheduleSerializer(day_schedules, many=True)
+
     serializer = ClassroomWeekTimetableSerializer(day_timetable,many=True,context={'class_section': classsection})
-    return Response(serializer.data)
+    response_data = {
+            'day_timetable': serializer.data,
+            'day_schedules': day_schedule_serializer.data
+        }
+    return Response(response_data)
 
 
 
@@ -693,6 +787,7 @@ def get_teacher_week_timetable(request,pk):
     # Get all teachers for the school
     user = request.user
     timetable = Timetable.objects.filter(school=user, is_default=True).first()  # Get the default timetable or None
+    day_schedules = timetable.day_schedules.all() if timetable else []
 
     if not timetable:
         return Response([], status=200)
@@ -709,22 +804,21 @@ def get_teacher_week_timetable(request,pk):
         
 
 
-    working_days = user.working_days
 
     day_timetable = []
     
     
-    for day_code in working_days:
+    for day_schedule in day_schedules:
         # Check if there's a Tutor object for this teacher and timetable
         
         # Initialize sessions with None for each period
-        sessions = [None] * timetable.number_of_lessons
+        sessions = [None] * day_schedule.teaching_slots
         
         # Get all lessons for this tutor on the specified day
         lessons = Lesson.objects.filter(
             timetable=timetable,
             allotted_teacher=tutor,
-            timeslot__day_of_week=day_code
+            timeslot__day_of_week=day_schedule.day
         ).order_by('timeslot__period')
         # Fill in the sessions with actual lesson data
         for lesson in lessons:
@@ -734,12 +828,17 @@ def get_teacher_week_timetable(request,pk):
         # sessions = [s for s in sessions if s is not None]
         if sessions:  # Only add to day_timetable if there are sessions
             day_timetable.append({
-                'day': day_code,
+                'day': day_schedule.day,
                 'sessions': sessions
             })
     
     serializer = TeacherWeekTimetableSerializer(day_timetable,many=True)
-    return Response(serializer.data)
+    day_schedule_serializer = TimeTableDayScheduleSerializer(day_schedules, many=True)
+    response_data = {
+            'day_timetable': serializer.data,
+            'day_schedules': day_schedule_serializer.data
+        }
+    return Response(response_data)
 
 
 
@@ -991,13 +1090,13 @@ def download_classroom_timetable(request, pk):
     except ClassSection.DoesNotExist:
         return Response({'error': 'No classroom found for this timetable.'}, status=422)
 
-    working_days = user.working_days
+    day_schedules = timetable.day_schedules.all() if timetable else []
     day_timetable = []
 
-    for day_code in working_days:
+    for day_schedule in day_schedules:
         day_lessons = Lesson.objects.filter(
             timetable=timetable,
-            timeslot__day_of_week=day_code,
+            timeslot__day_of_week=day_schedule.day,
             class_sections__in=[classsection]
         ).select_related(
             'course', 'allotted_teacher__teacher', 'classroom_assignment__room', 'timeslot'
@@ -1007,10 +1106,10 @@ def download_classroom_timetable(request, pk):
         for lesson in day_lessons:
             sessions[lesson.timeslot.period - 1].append(lesson)
 
-        formatted_sessions = [sessions[i] for i in range(timetable.number_of_lessons)]
+        formatted_sessions = [sessions[i] for i in range(day_schedule.teaching_slots)]
 
         day_timetable.append({
-            'day': day_code,
+            'day': day_schedule.day,
             'sessions': formatted_sessions
         })
 
@@ -1082,7 +1181,9 @@ def generate_classroom_pdf_timetable(timetable_data, classroom, filename):
     }
 
     # Prepare table data
-    headers = ['Day'] + [f'Period {i+1}' for i in range(len(timetable_data[0]['sessions']))]
+    max_sessions = max(len(day['sessions']) for day in timetable_data)
+
+    headers = ['Day'] + [f'Period {i+1}' for i in range(max_sessions)]
     table_data = [headers]
 
     for day_data in timetable_data:
@@ -1314,15 +1415,15 @@ def download_teacher_timetable(request, pk=None):
         except Tutor.DoesNotExist:
             return Response({'error': 'No timetable available for this teacher.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
-    working_days = user.working_days
+    day_schedules = timetable.day_schedules.all() if timetable else []
     day_timetable = []
 
-    for day_code in working_days:
-        sessions = [None] * timetable.number_of_lessons
+    for day_schedule in day_schedules:
+        sessions = [None] * day_schedule.teaching_slots
         lessons = Lesson.objects.filter(
             timetable=timetable,
             allotted_teacher=tutor,
-            timeslot__day_of_week=day_code
+            timeslot__day_of_week=day_schedule.day
         ).order_by('timeslot__period')
 
         for lesson in lessons:
@@ -1330,7 +1431,7 @@ def download_teacher_timetable(request, pk=None):
 
         if sessions:
             day_timetable.append({
-                'day': day_code,
+                'day': day_schedule.day,
                 'sessions': sessions
             })
 
@@ -1361,7 +1462,7 @@ def download_teacher_timetable(request, pk=None):
     # Define the alignment (centered both vertically and horizontally)
     day_alignment = Alignment(horizontal='center', vertical='center')
     # Write headers
-    headers = ["Day"] + [f"Session {i+1}" for i in range(timetable.number_of_lessons)]
+    headers = ["Day"] + [f"Session {i+1}" for i in range(day_schedule.teaching_slots)]
     for col, header in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col, value=header)
         cell.font = header_font
@@ -1422,32 +1523,30 @@ def download_teacher_timetable(request, pk=None):
 
 # views.py
 
-
-import os  # For using environment variables
-
-
+MAILGUN_API_KEY = "72e4a3d5-412b3024"  
+MAILGUN_DOMAIN = "sandbox919919ba556845f0accbe24af85df115.mailgun.org"  
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def send_email(request):
     try:
         response = send_simple_message()
-        
+
         if response.status_code == 200:
             return Response({"message": "Email sent successfully"})
         else:
             return Response({"error": response.text}, status=response.status_code)
-    
+
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
 def send_simple_message():
     return requests.post(
-        "https://api.mailgun.net/v3/sandbox919919ba556845f0accbe24af85df115.mailgun.org/messages",
-        auth=("api", os.getenv("72e4a3d5-412b3024")),  # Use environment variable
+        f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
+        auth=("api", MAILGUN_API_KEY),
         data={
-            "from": "Excited User <mailgun@sandbox919919ba556845f0accbe24af85df115.mailgun.org>",
-            "to": ["mrappt2001@gmail.com"],  # Ensure this is a valid email
+            "from": f"Excited User <mailgun@{MAILGUN_DOMAIN}>",
+            "to": ["mrappt2001@gmail.com", f"YOU@{MAILGUN_DOMAIN}"],
             "subject": "Hello",
             "text": "Testing some Mailgun awesomeness!"
         }

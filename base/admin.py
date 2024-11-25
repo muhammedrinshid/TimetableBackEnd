@@ -2,38 +2,20 @@ from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.postgres.forms import SimpleArrayField
-from .models import User,Subject
-from .models import Teacher  # Replace with the correct import path for Teacher model
-from .models import Standard, ElectiveGroup, Classroom,Room
-from .time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection
 
-@admin.register(Standard)
-class StandardAdmin(admin.ModelAdmin):
-    list_display = ('name', 'short_name', 'school', 'grade', 'created_at', 'updated_at')
-    search_fields = ('name', 'short_name')
-    list_filter = ('school', 'grade')
-    ordering = ('name',)
+# Model Imports
+from .models import (
+    User, Subject, Teacher, 
+    Standard, ElectiveGroup, Classroom, 
+    Room, DaySchedule, UserAcademicSchedule
+)
+from .time_table_models import (
+    Timetable, StandardLevel, ClassSection, 
+    Course, Tutor, ClassroomAssignment, 
+    Timeslot, Lesson, LessonClassSection
+)
 
-@admin.register(ElectiveGroup)
-class ElectiveGroupAdmin(admin.ModelAdmin):
-    list_display = ('name', 'school','be_included_in_second_selection')
-    search_fields = ('name',)
-    list_filter = ('school',)
-    ordering = ('name',)
-    filter_horizontal = ('preferred_rooms',)
-
-@admin.register(Classroom)
-class ClassroomAdmin(admin.ModelAdmin):
-    list_display = ('name', 'standard', 'school', 'number_of_students', 'class_id', 'division', 'created_at', 'updated_at')
-    search_fields = ('name', 'standard__name', 'division')
-    list_filter = ('standard', 'school', 'division')
-    ordering = ('name',)
-    readonly_fields = ('class_id',)
-
-    def save_model(self, request, obj, form, change):
-        if not obj.class_id:
-            obj.class_id = f'CR{Classroom.objects.count() + 1:04d}'
-        super().save_model(request, obj, form, change)
+# Custom Form for User Admin
 class DaysMultipleChoiceField(forms.MultipleChoiceField):
     def __init__(self, *args, **kwargs):
         kwargs['choices'] = User.DAYS_OF_WEEK
@@ -53,11 +35,12 @@ class CustomUserAdminForm(forms.ModelForm):
     def clean_working_days(self):
         return self.cleaned_data['working_days']
 
+# User Admin
 class CustomUserAdmin(UserAdmin):
     form = CustomUserAdminForm
     model = User
-    list_display = ('email', 'school_name', 'school_id', 'is_staff', 'is_active','is_ready_for_timetable')
-    list_filter = ('email', 'school_name', 'is_staff', 'is_active',)
+    list_display = ('email', 'school_name', 'school_id', 'is_staff', 'is_active', 'is_ready_for_timetable')
+    list_filter = ('email', 'school_name', 'is_staff', 'is_active')
     readonly_fields = ('all_classes_subject_assigned_atleast_one_teacher', 'all_classes_assigned_subjects')
     
     fieldsets = (
@@ -84,12 +67,41 @@ class CustomUserAdmin(UserAdmin):
         return obj.all_classes_assigned_subjects
     all_classes_assigned_subjects.short_description = "All classes have assigned subjects"
 
+# School Administration Models
+@admin.register(Standard)
+class StandardAdmin(admin.ModelAdmin):
+    list_display = ('name', 'short_name', 'school', 'grade', 'created_at', 'updated_at')
+    search_fields = ('name', 'short_name')
+    list_filter = ('school', 'grade')
+    ordering = ('name',)
+
+@admin.register(ElectiveGroup)
+class ElectiveGroupAdmin(admin.ModelAdmin):
+    list_display = ('name', 'school', 'be_included_in_second_selection')
+    search_fields = ('name',)
+    list_filter = ('school',)
+    ordering = ('name',)
+    filter_horizontal = ('preferred_rooms',)
+
+@admin.register(Classroom)
+class ClassroomAdmin(admin.ModelAdmin):
+    list_display = ('name', 'standard', 'school', 'number_of_students', 'class_id', 'division', 'created_at', 'updated_at')
+    search_fields = ('name', 'standard__name', 'division')
+    list_filter = ('standard', 'school', 'division')
+    ordering = ('name',)
+    readonly_fields = ('class_id',)
+
+    def save_model(self, request, obj, form, change):
+        if not obj.class_id:
+            obj.class_id = f'CR{Classroom.objects.count() + 1:04d}'
+        super().save_model(request, obj, form, change)
+
+# Subject and Teacher Models
 @admin.register(Subject)
 class SubjectAdmin(admin.ModelAdmin):
     list_display = ('name', 'school')
-    list_filter = ('school',)  # Add filters as needed
-    search_fields = ('name', 'school__username')  # Search by subject name or school username
-
+    list_filter = ('school',)
+    search_fields = ('name', 'school__username')
 
 @admin.register(Teacher)
 class TeacherAdmin(admin.ModelAdmin):
@@ -119,51 +131,15 @@ class TeacherAdmin(admin.ModelAdmin):
             return self.readonly_fields + ('teacher_id', 'created_at')
         return self.readonly_fields
 
-
-
+# Room and Resource Models
+@admin.register(Room)
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ('name', 'room_number', 'school', 'capacity', 'occupied','room_type')
+    list_display = ('name', 'room_number', 'school', 'capacity', 'occupied', 'room_type')
     search_fields = ('name', 'room_number', 'school__username')
     list_filter = ('school', 'occupied')
 
-admin.site.register(Room, RoomAdmin)
-
-admin.site.register(User, CustomUserAdmin)
-
-
-class StandardLevelAdmin(admin.ModelAdmin):
-    list_display = ('name', 'standard_id', 'timetable', 'school')
-    list_filter = ('timetable', 'school')
-    search_fields = ('name', 'standard_id', 'timetable__name', 'school__username')
-
-class ClassSectionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'classroom_id', 'standard', 'division', 'timetable', 'school')
-    list_filter = ('standard', 'division', 'timetable', 'school')
-    search_fields = ('name', 'classroom_id', 'standard__name', 'timetable__name', 'school__username')
-
-class CourseAdmin(admin.ModelAdmin):
-    list_display = ('name', 'get_subject_ids', 'timetable', 'school')
-    list_filter = ('timetable', 'school')
-    search_fields = ('name', 'timetable__name', 'school__username')
-
-    def get_subject_ids(self, obj):
-        return ', '.join(str(uuid) for uuid in obj.subject_ids)
-    get_subject_ids.short_description = 'Subject IDs'
-
-class TutorAdmin(admin.ModelAdmin):
-    list_display = ('name', 'teacher_id', 'timetable', 'school')
-    list_filter = ('timetable', 'school')
-    search_fields = ('name', 'teacher_id', 'timetable__name', 'school__username')
-
-class ClassroomAssignmentAdmin(admin.ModelAdmin):
-    list_display = ('name', 'room_id', 'capacity', 'room_type', 'occupied', 'timetable', 'school')
-    list_filter = ('room_type', 'occupied', 'timetable', 'school')
-    search_fields = ('name', 'room_id', 'timetable__name', 'school__username')
-
-class TimeslotAdmin(admin.ModelAdmin):
-    list_display = ('day_of_week', 'period', 'timetable', 'school')
-    list_filter = ('day_of_week', 'timetable', 'school')
-    search_fields = ('day_of_week', 'period', 'timetable__name', 'school__username')
+# Timetable and Scheduling Models
+@admin.register(Timetable)
 class TimetableAdmin(admin.ModelAdmin):
     list_display = ('name', 'school', 'score', 'optimal', 'feasible', 'is_default')
     list_filter = ('school', 'optimal', 'feasible', 'is_default')
@@ -178,30 +154,84 @@ class TimetableAdmin(admin.ModelAdmin):
         ('Lesson Settings', {'fields': ('number_of_lessons',)}),
     )
 
+@admin.register(StandardLevel)
+class StandardLevelAdmin(admin.ModelAdmin):
+    list_display = ('name', 'standard_id', 'timetable', 'school')
+    list_filter = ('timetable', 'school')
+    search_fields = ('name', 'standard_id', 'timetable__name', 'school__username')
+
+@admin.register(ClassSection)
+class ClassSectionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'classroom_id', 'standard', 'division', 'timetable', 'school')
+    list_filter = ('standard', 'division', 'timetable', 'school')
+    search_fields = ('name', 'classroom_id', 'standard__name', 'timetable__name', 'school__username')
+
+@admin.register(Course)
+class CourseAdmin(admin.ModelAdmin):
+    list_display = ('name', 'get_subject_ids', 'timetable', 'school')
+    list_filter = ('timetable', 'school')
+    search_fields = ('name', 'timetable__name', 'school__username')
+
+    def get_subject_ids(self, obj):
+        return ', '.join(str(uuid) for uuid in obj.subject_ids)
+    get_subject_ids.short_description = 'Subject IDs'
+
+@admin.register(Tutor)
+class TutorAdmin(admin.ModelAdmin):
+    list_display = ('name', 'teacher_id', 'timetable', 'school')
+    list_filter = ('timetable', 'school')
+    search_fields = ('name', 'teacher_id', 'timetable__name', 'school__username')
+
+@admin.register(ClassroomAssignment)
+class ClassroomAssignmentAdmin(admin.ModelAdmin):
+    list_display = ('name', 'room_id', 'capacity', 'room_type', 'occupied', 'timetable', 'school')
+    list_filter = ('room_type', 'occupied', 'timetable', 'school')
+    search_fields = ('name', 'room_id', 'timetable__name', 'school__username')
+
+@admin.register(Timeslot)
+class TimeslotAdmin(admin.ModelAdmin):
+    list_display = ('day_of_week', 'period', 'timetable', 'school')
+    list_filter = ('day_of_week', 'timetable', 'school')
+    search_fields = ('day_of_week', 'period', 'timetable__name', 'school__username')
+
+@admin.register(Lesson)
 class LessonAdmin(admin.ModelAdmin):
-    list_display = ('course', 'allotted_teacher', 'timeslot', 'timetable', 'school','elective_subject_name')
+    list_display = ('course', 'allotted_teacher', 'timeslot', 'timetable', 'school', 'elective_subject_name')
     list_filter = ('timetable', 'school', 'course')
     search_fields = ('course__name', 'allotted_teacher__name', 'timeslot__day_of_week', 'timetable__name', 'school__username')
 
-    # Display class sections as a list
     def get_class_sections(self, obj):
         return ', '.join(section.name for section in obj.class_sections.all())
     get_class_sections.short_description = 'Class Sections'
+
 @admin.register(LessonClassSection)
 class LessonClassSectionAdmin(admin.ModelAdmin):
     list_display = ('lesson', 'class_section', 'number_of_students')
-    search_fields = ('lesson__name', 'class_section__name')  # Adjust field names if necessary
+    search_fields = ('lesson__name', 'class_section__name')
     list_filter = ('lesson', 'class_section')
-# Register the models with the admin site
-admin.site.register(Timetable, TimetableAdmin)
-admin.site.register(StandardLevel, StandardLevelAdmin)
-admin.site.register(ClassSection, ClassSectionAdmin)
-admin.site.register(Course, CourseAdmin)
-admin.site.register(Tutor, TutorAdmin)
-admin.site.register(ClassroomAssignment, ClassroomAssignmentAdmin)
-admin.site.register(Timeslot, TimeslotAdmin)
-admin.site.register(Lesson, LessonAdmin)
 
+# Academic Schedule Models
+class DayScheduleInline(admin.TabularInline):
+    model = DaySchedule
+    extra = 1
+    fields = ['day', 'teaching_slots']
 
+@admin.register(UserAcademicSchedule)
+class UserAcademicScheduleAdmin(admin.ModelAdmin):
+    list_display = ('user', 'average_students_allowed', 'period_name', 'total_weekly_teaching_slots')
+    search_fields = ('user__username',)
+    inlines = [DayScheduleInline]
+    list_filter = ('period_name',)
 
+    def total_weekly_teaching_slots(self, obj):
+        return obj.total_weekly_teaching_slots
+    total_weekly_teaching_slots.admin_order_field = 'total_weekly_teaching_slots'
 
+@admin.register(DaySchedule)
+class DayScheduleAdmin(admin.ModelAdmin):
+    list_display = ('schedule', 'day', 'teaching_slots')
+    list_filter = ('day',)
+    search_fields = ('schedule__user__username',)
+
+# Register remaining models (optional due to @admin.register decorator)
+admin.site.register(User, CustomUserAdmin)

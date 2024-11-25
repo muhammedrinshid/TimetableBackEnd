@@ -3,7 +3,26 @@ from ...models import Standard, Classroom, Grade, User, Teacher, Subject, ClassS
 from django.db import transaction
 
 # Existing serializers
+class TeacherDetailSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    image = serializers.ImageField(source='profile_image', use_url=True)
 
+    class Meta:
+        model = Teacher
+        fields = ['id', 'name', 'image']
+
+    def get_name(self, obj):
+        return f"{obj.name} {obj.surname}" if obj.surname else obj.name
+class TeacherSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Teacher
+        fields = ['id', 'full_name', 'profile_image']
+        read_only_fields = ['id', 'created_at', 'profile_image']
+
+    def get_full_name(self, obj):
+        return f"{obj.name} {obj.surname}" if obj.surname else obj.name
 class StandardSerializer(serializers.ModelSerializer):
     grade = serializers.PrimaryKeyRelatedField(queryset=Grade.objects.all())
 
@@ -13,9 +32,10 @@ class StandardSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 class ClassroomLightSerializer(serializers.ModelSerializer):
+    class_teacher=TeacherSerializer()
     class Meta:
         model = Classroom
-        fields = ['id', 'name', 'division', 'lessons_assigned_subjects']
+        fields = ['id', 'name', 'division', 'lessons_assigned_subjects','class_teacher']
 
 class StandardLightSerializer(serializers.ModelSerializer):
     classrooms = ClassroomLightSerializer(many=True, read_only=True)
@@ -31,15 +51,7 @@ class GradeLightSerializer(serializers.ModelSerializer):
         model = Grade
         fields = ['id', 'name', 'short_name', 'standards']
 
-class TeacherSerializer(serializers.ModelSerializer):
-    full_name = serializers.SerializerMethodField()
 
-    class Meta:
-        model = Teacher
-        fields = ['id', 'full_name', 'profile_image']
-
-    def get_full_name(self, obj):
-        return f"{obj.name} {obj.surname}" if obj.surname else obj.name
 
 class SubjectWithTeachersSerializer(serializers.ModelSerializer):
     qualified_teachers = TeacherSerializer(source='available_teachers', many=True)
@@ -50,11 +62,11 @@ class SubjectWithTeachersSerializer(serializers.ModelSerializer):
 
 class ClassroomSerializer(serializers.ModelSerializer):
     standard = serializers.PrimaryKeyRelatedField(queryset=Standard.objects.all())
-
+    # class_teacher=TeacherSerializer()
     class Meta:
         model = Classroom
         fields = ['id', 'name', 'standard', 'number_of_students', 
-                  'class_id', 'created_at', 'updated_at', 'division','room']
+                  'class_id', 'created_at', 'updated_at', 'division','room','class_teacher']
         read_only_fields = ['id', 'created_at', 'updated_at', 'class_id']
 
     def validate(self, data):
@@ -121,16 +133,6 @@ class RoomSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'school']
 
 
-class TeacherDetailSerializer(serializers.ModelSerializer):
-    name = serializers.SerializerMethodField()
-    image = serializers.ImageField(source='profile_image', use_url=True)
-
-    class Meta:
-        model = Teacher
-        fields = ['id', 'name', 'image']
-
-    def get_name(self, obj):
-        return f"{obj.name} {obj.surname}" if obj.surname else obj.name
 
 class SubjectDetailSerializer(serializers.ModelSerializer):
     class Meta:
@@ -178,11 +180,11 @@ class ClassroomDetailSerializer(serializers.ModelSerializer):
     subjects_assigned_teacher = serializers.SerializerMethodField()
     total_subjects = serializers.SerializerMethodField()
     subject_data = ClassSubjectDetailSerializer(source='class_subjects', many=True)
-
+    class_teacher=TeacherSerializer()
     class Meta:
         model = Classroom
         fields = ['id', 'name', 'standard_name','standard_short_name', 'division', 'room', 'lessons_assigned_subjects',
-                  'subjects_assigned_teacher', 'total_subjects', 'subject_data','number_of_students']
+                  'subjects_assigned_teacher', 'total_subjects', 'subject_data','number_of_students','class_teacher']
 
     def get_lessons_assigned_subjects(self, obj):
         return sum(cs.lessons_per_week for cs in obj.class_subjects.all())

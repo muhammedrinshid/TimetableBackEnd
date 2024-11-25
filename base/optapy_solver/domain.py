@@ -126,11 +126,12 @@ class GradeLevelManager:
 
 @problem_fact
 class ClassSection():
-    def __init__(self, id, standard, division, name):
+    def __init__(self, id, standard, division, name,class_teacher=None):
         self.id = id
         self.standard = standard
         self.division = division
         self.name = name
+        self.class_teacher=class_teacher
 
     @planning_id
     def get_id(self):
@@ -143,11 +144,11 @@ class ClassSectionManager:
     _registry = {}
 
     @classmethod
-    def get_or_create(cls, id, standard, division, name):
+    def get_or_create(cls, id, standard, division, name,class_teacher):
         if id in cls._registry:
             return cls._registry[id]
         else:
-            new_instance = ClassSection(id, standard, division, name)
+            new_instance = ClassSection(id, standard, division, name,class_teacher=None)
             cls._registry[id] = new_instance
             return new_instance
 

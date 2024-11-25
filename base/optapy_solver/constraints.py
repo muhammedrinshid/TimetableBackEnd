@@ -54,6 +54,10 @@ def dynamic_constraint_provider(user_settings,user):
             constraints.append(avoid_consecutive_elective_lessons(constraint_factory))
         if user_settings.avoid_elective_in_first_period :
             constraints.append(avoid_elective_in_first_period(constraint_factory))
+        if user_settings.assign_class_teacher_at_first_period :
+            constraints.append(assign_class_teacher_at_first_period(constraint_factory))
+        if user_settings.same_teacher_first_period_constraint :
+            constraints.append(same_teacher_first_period_constraint(constraint_factory))
 
         return constraints
 
@@ -251,3 +255,50 @@ def avoid_elective_in_first_period(constraint_factory: ConstraintFactory):
     return constraint_factory.for_each(Lesson) \
         .filter(lambda lesson: lesson.is_elective and lesson.timeslot.period == 1) \
         .penalize("Avoid elective lessons in the first period", HardSoftScore.ofSoft(100))
+
+def assign_class_teacher_at_first_period(constraint_factory) -> Constraint:
+    """
+    Prioritizes assigning class teachers to their class sections in the first period for core subjects.
+    Penalizes when the class teacher is not teaching their class in first period.
+    """
+    return constraint_factory.for_each(Lesson)\
+        .filter(lambda lesson: 
+            # Filter for core subjects (not electives)
+            not lesson.is_elective
+            # Check if there's only one class section
+            and len(lesson.class_sections) == 1
+            # Check if it's first period
+            and lesson.timeslot is not None 
+            and lesson.timeslot.period == 1
+            # Check if the class has a class teacher
+            and lesson.class_sections[0].class_teacher is not None
+            # Check if allotted teacher is different from class teacher
+            and lesson.allotted_teacher != lesson.class_sections[0].class_teacher)\
+        .penalize("Class teacher not teaching first period", HardSoftScore.ofSoft(50))
+        
+def same_teacher_first_period_constraint(constraint_factory) -> Constraint:
+    """
+    Encourages assigning the same teacher for first period core subjects 
+    for a class section across different days.
+    Penalizes when different teachers are assigned to first period.
+    """
+    return constraint_factory.for_each(Lesson)\
+        .join(Lesson,
+              # Same class sections
+              Joiners.equal(lambda lesson: lesson.class_sections),
+              # Different lessons
+              Joiners.less_than(lambda lesson: lesson.id))\
+        .filter(lambda lesson1, lesson2:
+            lesson1.timeslot is not None 
+            and lesson2.timeslot is not None
+            and lesson1.timeslot.period == 1
+            and lesson2.timeslot.period == 1
+            and lesson1.timeslot.day_of_week != lesson2.timeslot.day_of_week
+            and not lesson1.is_elective 
+            and not lesson2.is_elective
+            and len(lesson1.class_sections) == 1
+            and len(lesson2.class_sections) == 1
+            and lesson1.allotted_teacher is not None
+            and lesson2.allotted_teacher is not None
+            and lesson1.allotted_teacher != lesson2.allotted_teacher)\
+        .penalize("Different teachers for first period", HardSoftScore.ofSoft(50))

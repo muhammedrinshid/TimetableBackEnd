@@ -2,7 +2,7 @@ from .domain import TimeTable
 from .domain import Timeslot,Lesson,ClassSection,StandardLevelManager,TutorManager,CourseManager,ClassroomAssignmentManager,ClassSectionManager
 import uuid
 from optapy.constraint import ConstraintMatchTotal
-from base.models import UserConstraintSettings
+from base.models import UserConstraintSettings,UserAcademicSchedule
 
 
 from .solver_helper_functions import create_core_lesson_ojbects,create_elective_lesson_ojbects,get_all_elective_group_of_user,create_elective_lesson_data
@@ -76,12 +76,13 @@ def create_problem_from_django_models(user):
     tutors=[TutorManager.get_or_create(id=teacher.id,name=teacher.name,min_lessons_per_week=teacher.min_lessons_per_week,max_lessons_per_week=teacher.max_lessons_per_week) for teacher in Teacher.objects.filter(school=school)]
     for teacher in tutors:
         print(teacher.name,teacher.min_lessons_per_week,teacher.max_lessons_per_week)
-    working_days = school.working_days
-    teaching_slots = school.teaching_slots
+    user_academic_schedule = UserAcademicSchedule.objects.get(user=user)
+
+    # Generate timeslots
     timeslots = [
-        Timeslot(f"{day}-{period}", day, period)
-        for day in working_days
-        for period in range(1, teaching_slots + 1)
+        Timeslot(f"{day_schedule.day}-{slot}", day_schedule.day, slot)
+        for day_schedule in user_academic_schedule.day_schedules.all()
+        for slot in range(1, day_schedule.teaching_slots + 1)
     ]
     all_elective_group_of_school=get_all_elective_group_of_user(school)
     rough_data_for_elective_lesson_creation=create_elective_lesson_data(all_elective_group_of_school)

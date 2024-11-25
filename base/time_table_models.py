@@ -6,6 +6,14 @@ from django.dispatch import receiver
 from django.db.models.signals import post_save
 
 from .models import Classroom,Subject,Teacher,Room,Standard
+class DayChoices(models.TextChoices):
+    MONDAY = 'MON', 'Monday'
+    TUESDAY = 'TUE', 'Tuesday'
+    WEDNESDAY = 'WED', 'Wednesday'
+    THURSDAY = 'THU', 'Thursday'
+    FRIDAY = 'FRI', 'Friday'
+    SATURDAY = 'SAT', 'Saturday'
+    SUNDAY = 'SUN', 'Sunday'
 
 class Timetable(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -37,7 +45,27 @@ def set_default_timetable(sender, instance, created, **kwargs):
         if Timetable.objects.filter(school=instance.school).count() == 1:
             instance.set_as_default()
             
-            
+
+class TimeTableDaySchedule(models.Model):
+    table = models.ForeignKey(
+        'Timetable', 
+        on_delete=models.CASCADE, 
+        related_name='day_schedules'
+    )
+    day = models.CharField(
+        max_length=3, 
+        choices=DayChoices.choices
+    )
+    teaching_slots = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        unique_together = ['table', 'day']
+        ordering = ['day']
+
+    def __str__(self):
+        return f"{self.get_day_display()} - {self.teaching_slots} slots"    
+    
+    
 class StandardLevel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     standard = models.ForeignKey(Standard,on_delete=models.SET_NULL,related_name='class_sectons',null=True)  # Changed to UUIDField and removed unique constraint

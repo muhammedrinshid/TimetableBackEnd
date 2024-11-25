@@ -2,7 +2,7 @@ from rest_framework import serializers
 from ...time_table_models import Timetable
 from rest_framework import serializers
 from ...models import  Teacher, Room, Subject, Classroom
-from ...time_table_models import Timetable,  Lesson,LessonClassSection,Tutor,ClassSection
+from ...time_table_models import Timetable,  Lesson,LessonClassSection,Tutor,ClassSection,TimeTableDaySchedule
 from .user_serializer import SubjectSerializer
 from uuid import uuid4
 class TimetableSerializer(serializers.ModelSerializer):
@@ -283,7 +283,10 @@ class TeacherWeekTimetableSerializer(serializers.Serializer):
 
     
 
-
+class TimeTableDayScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TimeTableDaySchedule
+        fields = ['day', 'teaching_slots']
 
 
 

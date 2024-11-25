@@ -4,14 +4,18 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from ..serializer.user_serializer import UserSerializer,GradeSerializer,SubjectSerializer,UserConstraintSettingsSerializer
 from django.shortcuts import get_object_or_404
-from ...models import User,Grade,Subject,UserConstraintSettings
+from ...models import User,Grade,Subject,UserConstraintSettings,UserAcademicSchedule
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def user_info(request):
     user = get_object_or_404(User, id=request.user.id)
-    
+    try:
+        user_academic_schedule = UserAcademicSchedule.objects.get(user=request.user)
+    except UserAcademicSchedule.DoesNotExist:
+        user_academic_schedule = UserAcademicSchedule(user=request.user)
+        user_academic_schedule.save()
     if request.method == 'GET':
         serializer = UserSerializer(user)
         return Response(serializer.data)
@@ -23,6 +27,9 @@ def user_info(request):
             return Response(serializer.data)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
+    
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser])

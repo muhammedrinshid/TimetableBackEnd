@@ -195,6 +195,7 @@ def classroom_instance_manager(request,pk=None):
 
         room_data = request.data.get('room')
         number_of_students = request.data.get('number_of_students')
+        class_teacher = request.data.get('class_teacher')
 
         with transaction.atomic():
             try:
@@ -239,6 +240,9 @@ def classroom_instance_manager(request,pk=None):
                     classroom_update_data['room'] = room.id
                 if number_of_students is not None:
                     classroom_update_data['number_of_students'] = number_of_students
+                if class_teacher is not None:
+                    print(class_teacher)
+                    classroom_update_data['class_teacher'] = class_teacher["id"]
 
                 # Use ClassroomSerializer for updating the classroom
                 classroom_serializer = ClassroomSerializer(classroom, data=classroom_update_data, partial=True)

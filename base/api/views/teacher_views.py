@@ -30,7 +30,7 @@ from django.db import transaction
 import pandas as pd
 from fuzzywuzzy import fuzz  # For fuzzy string matching of subject names
 
-
+from ..serializer.class_room_serializer import TeacherSerializer as SimpleTeacherSerializer
 
 @api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
@@ -133,7 +133,17 @@ def teachers(request):
     
     
     
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_teachers_without_classroom(request):
+    # Filter teachers who are not assigned to any classroom
+    teachers_without_classroom = Teacher.objects.filter(classroom_teacher__isnull=True,school=request.user)
 
+    # Serialize the teacher data
+    serializer = SimpleTeacherSerializer(teachers_without_classroom, many=True)
+
+    # Return the serialized data as a response
+    return Response(serializer.data)
 
 
 @api_view(['GET'])
@@ -336,7 +346,6 @@ def generate_teacher_template(request):
 @permission_classes([IsAuthenticated])
 def process_teacher_template(request):
     """Process uploaded Excel template and create Teacher records"""
-    print("hi")
     if 'file' not in request.FILES:
         return Response({"error": "No file uploaded"}, status=400)
     
