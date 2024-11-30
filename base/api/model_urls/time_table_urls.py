@@ -1,5 +1,6 @@
 from django.urls import path
-from ..views import time_table_views
+from ..views import time_table_views ,day_timetable_views
+
 
 urlpatterns = [
     # Trigger to initiate the scheduling of a new timetable
@@ -20,8 +21,8 @@ urlpatterns = [
     # Single Day Timetable View (for teachers and students)
     # - Retrieve the full timetable for a single day, specific to either teachers or students
     # - 'day_of_week' parameter specifies the day to view
-    path('teacher-view-day/<str:day_of_week>/', time_table_views.get_whole_teacher_single_day_timetable, name='teacher_day_timetable'),
-    path('student-view-day/<str:day_of_week>/', time_table_views.get_whole_student_single_day_timetable, name='student_day_timetable'),
+    path('teacher-view-day/<str:date_str>/', day_timetable_views.get_whole_teacher_single_day_timetable, name='teacher_day_timetable'),
+    path('student-view-day/<str:date_str>/', day_timetable_views.get_whole_student_single_day_timetable, name='student_day_timetable'),
 
     # Default Weekly Timetable View (for teachers and students)
     # - Retrieve the entire weekly timetable of the default timetable, specific to either teachers or students
@@ -57,5 +58,12 @@ urlpatterns = [
     
     
     path('send-email/', time_table_views.send_email, name='send_email_to_teacher'),
+    
+    
+    path('create-day-timetable/', day_timetable_views.create_day_timetable, name='create-day-timetable'),
+    path('day-timetable-date/delete/<uuid:pk>/', day_timetable_views.delete_day_timetable_date, name='delete_day_timetable_date'),
+    path('submit-custom-teacher-day-timetable/<uuid:pk>/<str:date_str>/', day_timetable_views.submit_teacher_custom_day_timetable_edits, name='submit_teacher_timetable_edits'),
+    path('submit-custom-student-day-timetable/<uuid:pk>/<str:date_str>/', day_timetable_views.submit_student_custom_day_timetable_edits, name='submit_student_timetable_edits'),
+
 
 ]

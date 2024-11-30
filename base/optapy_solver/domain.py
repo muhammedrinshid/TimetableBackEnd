@@ -36,10 +36,11 @@ class ClassroomAssignmentManager:
 
 @problem_fact
 class Timeslot:
-    def __init__(self, id, day_of_week, period):
+    def __init__(self, id, day_of_week, period,total_teaching_slots):
         self.id = id
         self.day_of_week = day_of_week
         self.period = period
+        self.total_teaching_slots = total_teaching_slots  # Represents the total teaching slots for this timeslot
 
     @planning_id
     def get_id(self):

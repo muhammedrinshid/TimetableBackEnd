@@ -9,7 +9,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # Add custom claims
         token['school_name'] = user.school_name
-        token['working_days'] = user.working_days  # Changed this line
+        token['total_weekly_teaching_slots'] = user.academic_schedule.total_weekly_teaching_slots  # Changed this line
         token['teaching_slots'] = user.teaching_slots
         token['school_id'] = user.school_id
         token['is_ready_for_timetable'] = user.is_ready_for_timetable

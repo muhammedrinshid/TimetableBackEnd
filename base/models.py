@@ -212,6 +212,12 @@ class UserAcademicSchedule(models.Model):
             day_schedule.teaching_slots 
             for day_schedule in self.day_schedules.all()
         )
+    @property
+    def total_working_days(self):
+        """
+        Calculate the total number of working days (schedules) in the week.
+        """
+        return self.day_schedules.count()
 
 class DaySchedule(models.Model):
     schedule = models.ForeignKey(

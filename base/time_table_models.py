@@ -169,3 +169,145 @@ class LessonClassSection(models.Model):
     lesson = models.ForeignKey('Lesson', on_delete=models.CASCADE)
     class_section = models.ForeignKey('ClassSection', on_delete=models.CASCADE)
     number_of_students = models.IntegerField()
+
+
+
+
+class DayTimetableDate(models.Model):  
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name="timetable_dates")
+    date = models.DateField()
+    day_of_week = models.CharField(
+        max_length=3, 
+        choices=DayChoices.choices
+    )
+    day_timetable = models.OneToOneField(
+        "DayTimetable",
+        on_delete=models.CASCADE,  # Delete the related DayTimetableDate when DayTimetable is deleted
+        related_name="timetable_date",
+        null=True  # Allow null values if needed
+    )
+
+    def __str__(self):
+        return f"{self.date} ({self.day_of_week}) for {self.school}"
+
+class DayTimetable(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    timetable = models.ForeignKey("Timetable", on_delete=models.CASCADE, related_name="day_timetables")
+    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name="day_timetables")
+    teaching_slots = models.IntegerField()
+    auto_generated = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"DayTimetable for {self.school} from {self.timetable}"
+    
+    
+class DayLesson(models.Model):  
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    day_timetable = models.ForeignKey(DayTimetable, on_delete=models.CASCADE, related_name="lessons")
+    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name="day_lessons")
+    course = models.ForeignKey("DayCourse", on_delete=models.CASCADE)
+    allotted_teacher = models.ForeignKey(
+        "DayTutor",
+        on_delete=models.CASCADE,
+        related_name="day_lessons"  # Unique related_name for DayLesson
+    )
+    class_sections = models.ManyToManyField(
+        "DayClassSection",
+        through="DayLessonClassSection",
+        related_name="day_lessons"
+    )
+    classroom_assignment = models.ForeignKey("DayClassroomAssignment", on_delete=models.CASCADE)
+    is_elective = models.BooleanField(default=False, null=True, blank=True)
+    elective_subject_name = models.CharField(max_length=100, null=True, blank=True)
+    elective_group_id=models.UUIDField(null=True,blank=True)
+    period = models.IntegerField()
+
+    def __str__(self):
+        return f"DayLesson for {self.course} by {self.allotted_teacher}"
+    
+    
+class DayLessonClassSection(models.Model):
+    day_lesson = models.ForeignKey(
+        DayLesson, on_delete=models.CASCADE, related_name="class_section_assignments"
+    )
+    class_section = models.ForeignKey(
+        "DayClassSection", on_delete=models.CASCADE, related_name="day_lesson_assignments"
+    )
+    number_of_students = models.IntegerField()
+
+    def __str__(self):
+        return f"Class Section {self.class_section} for {self.day_lesson} with {self.number_of_students} students"
+
+    
+  
+class DayStandardLevel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    standard = models.ForeignKey(Standard,on_delete=models.SET_NULL,related_name='day_standard_levels',null=True)  # Changed to UUIDField and removed unique constraint
+    name = models.CharField(max_length=50)
+    day_timetable = models.ForeignKey(DayTimetable, on_delete=models.CASCADE, related_name='day_standard_levels')
+    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='day_standard_levels')
+
+    # class Meta:
+        # unique_together = ('standard_id', 'timetable')  # Ensure uniqueness within a timetable
+
+    def __str__(self):
+        return self.name
+
+class DayClassSection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    classroom = models.ForeignKey(Classroom,on_delete=models.SET_NULL,related_name='day_class_sectons',null=True)  # Changed to UUIDField and removed unique constraint
+    standard = models.ForeignKey(DayStandardLevel, on_delete=models.CASCADE)
+    division = models.CharField(max_length=10)
+    name = models.CharField(max_length=100)
+    day_timetable = models.ForeignKey(DayTimetable, on_delete=models.CASCADE, related_name='day_class_sections')
+    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='day_class_sections')
+
+    # class Meta:
+        # unique_together = ('classroom_id', 'timetable')  # Ensure uniqueness within a timetable
+
+    def __str__(self):
+        return f"{self.standard.name} - {self.division}"
+
+class DayCourse(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    subject = models.ForeignKey(Subject,on_delete=models.SET_NULL,related_name='day_courses',null=True)
+    name = models.CharField(max_length=100)
+    day_timetable = models.ForeignKey(DayTimetable, on_delete=models.CASCADE, related_name='day_courses')
+    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='day_courses')
+
+    # class Meta:
+    # unique_together = ('subject_id', 'timetable')  # Ensure uniqueness within a timetable
+
+    def __str__(self):
+        return self.name
+
+class DayTutor(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    teacher = models.ForeignKey(Teacher,on_delete=models.SET_NULL,related_name='day_tutors',null=True) # Changed to UUIDField and removed unique constraint
+    name = models.CharField(max_length=100)
+    day_timetable = models.ForeignKey(DayTimetable, on_delete=models.CASCADE, related_name='day_tutors')
+    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='day_tutors')
+
+    # class Meta:
+        # unique_together = ('teacher_id', 'timetable')  # Ensure uniqueness within a timetable
+
+    def __str__(self):
+        return self.name
+
+class DayClassroomAssignment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    room = models.ForeignKey(Room,on_delete=models.SET_NULL,related_name='day_classroom_asingments',null=True)  # Changed to UUIDField and removed unique constraint
+    name = models.CharField(max_length=100)
+    capacity = models.IntegerField()
+    room_type = models.CharField(max_length=50)
+    occupied = models.BooleanField(default=False)
+    timetable = models.ForeignKey(DayTimetable, on_delete=models.CASCADE, related_name='day_classroom_assignments')
+    school = models.ForeignKey(User, on_delete=models.CASCADE, related_name='day_classroom_assignments')
+
+    # class Meta:
+        # unique_together = ('room_id', 'timetable')  # Ensure uniqueness within a timetable
+
+    def __str__(self):
+        return self.name

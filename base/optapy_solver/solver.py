@@ -80,7 +80,7 @@ def create_problem_from_django_models(user):
 
     # Generate timeslots
     timeslots = [
-        Timeslot(f"{day_schedule.day}-{slot}", day_schedule.day, slot)
+        Timeslot(f"{day_schedule.day}-{slot}", day_schedule.day, slot,day_schedule.teaching_slots)
         for day_schedule in user_academic_schedule.day_schedules.all()
         for slot in range(1, day_schedule.teaching_slots + 1)
     ]

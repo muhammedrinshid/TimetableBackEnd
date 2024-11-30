@@ -12,7 +12,7 @@ from .models import (
 from .time_table_models import (
     Timetable, StandardLevel, ClassSection, 
     Course, Tutor, ClassroomAssignment, 
-    Timeslot, Lesson, LessonClassSection
+    Timeslot, Lesson, LessonClassSection,DayTimetableDate, DayTimetable,DayLessonClassSection
 )
 
 # Custom Form for User Admin
@@ -235,3 +235,31 @@ class DayScheduleAdmin(admin.ModelAdmin):
 
 # Register remaining models (optional due to @admin.register decorator)
 admin.site.register(User, CustomUserAdmin)
+
+
+
+
+# Register the DayTimetableDate model
+@admin.register(DayTimetableDate)
+class DayTimetableDateAdmin(admin.ModelAdmin):
+    list_display = ('date', 'day_of_week', 'school', 'day_timetable')
+    search_fields = ('date', 'day_of_week', 'school__username')  # Search by school username or other fields
+    list_filter = ('day_of_week', 'school')  # Filter by day_of_week or school
+    ordering = ('date',)  # Default ordering by date
+
+# Register the DayTimetable model
+@admin.register(DayTimetable)
+class DayTimetableAdmin(admin.ModelAdmin):
+    list_display = ('school', 'timetable', 'teaching_slots', 'auto_generated')
+    search_fields = ('school__username', 'timetable__id')  # Search by school username or timetable id
+    list_filter = ('auto_generated', 'school')  # Filter by auto_generated or school
+    ordering = ('school',)  # Default ordering by school
+    
+    
+
+@admin.register(DayLessonClassSection)
+class DayLessonClassSectionAdmin(admin.ModelAdmin):
+    list_display = ('day_lesson', 'class_section', 'number_of_students')
+    list_filter = ('day_lesson', 'class_section')
+    search_fields = ('day_lesson__id', 'class_section__id')
+    ordering = ('day_lesson', 'class_section')

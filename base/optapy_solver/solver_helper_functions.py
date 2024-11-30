@@ -166,6 +166,7 @@ def create_elective_lesson_data(input_data):
                 if suitable_room is None:
 
                     if not prefered_rooms_for_overflow:  # Check if the list is empty or None
+                        print(group)
                         raise ValueError("No preferred rooms for overflow available or list is empty.")
                     available_rooms_ids = list(prefered_rooms_for_overflow)
    

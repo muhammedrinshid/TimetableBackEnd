@@ -29,17 +29,17 @@ def dynamic_constraint_provider(user_settings,user):
         if user_settings.ensure_timeslot_assigned:
             constraints.append(ensure_timeslot_assigned(constraint_factory))
         if user_settings.avoid_first_half_period:
-            constraints.append(avoid_first_half_period_allocation(constraint_factory,periods_per_day=user.teaching_slots))
+            constraints.append(avoid_first_half_period_allocation(constraint_factory))
         # if user_settings.consecutive_multi_block_lessons:
         #     constraints.append(consecutive_multi_block_lessons(constraint_factory))
 
         # Soft constraints
         if user_settings.tutor_free_period_constraint:
-            constraints.append(tutor_free_period_constraint(constraint_factory,user=user))
+            constraints.append(tutor_free_period_constraint(constraint_factory))
         if user_settings.tutor_lesson_load:
             constraints.append(tutor_lesson_load(constraint_factory))
         if user_settings.daily_lesson_limit:
-            constraints.append(daily_lesson_limit(constraint_factory,days_per_week=len(user.working_days)))
+            constraints.append(daily_lesson_limit(constraint_factory,days_per_week=user.academic_schedule.total_working_days))
         if user_settings.prefer_consistent_teacher_for_subject:
             constraints.append(prefer_consistent_teacher_for_subject(constraint_factory))
         if user_settings.prefer_subject_once_per_day:
@@ -112,16 +112,11 @@ def elective_group_timeslot_constraint(constraint_factory: ConstraintFactory):
         .penalize("Elective group timeslot mismatch", HardSoftScore.ONE_HARD,
                   lambda lesson1, lesson2: 1 if lesson1.timeslot != lesson2.timeslot else 0)
         
-def avoid_first_half_period_allocation(constraint_factory: ConstraintFactory, periods_per_day):
-    # Calculate the maximum period number for the first half of the day
-    first_half_period_limit = periods_per_day // 2
-    
-    return constraint_factory.for_each(Lesson) \
-        .filter(lambda lesson: lesson.prevent_first_half_period and lesson.timeslot.period <= first_half_period_limit) \
+def avoid_first_half_period_allocation(constraint_factory: ConstraintFactory):
+    return constraint_factory.forEach(Lesson) \
+        .filter(lambda lesson: lesson.prevent_first_half_period and 
+                lesson.timeslot.period <= lesson.timeslot.total_teaching_slots // 2) \
         .penalize("Avoid lessons in the first half for specific lessons", HardSoftScore.ofHard(1))
-
-        
-        
         
         
         
@@ -229,17 +224,36 @@ def avoid_continuous_teaching(constraint_factory: ConstraintFactory):
                 abs(lesson1.timeslot.period - lesson2.timeslot.period) == 1) \
         .penalize("Avoid continuous teaching", HardSoftScore.ofSoft(25))
 
-   
-def tutor_free_period_constraint(constraint_factory: ConstraintFactory,user):
-    periods_per_day=user.teaching_slots
-    return constraint_factory.forEach(Tutor) \
-        .join(Lesson,
-              Joiners.equal(lambda tutor: tutor, lambda lesson: lesson.allotted_teacher)) \
-        .groupBy(lambda tutor, lesson: tutor,
-                 ConstraintCollectors.countDistinct(lambda tutor, lesson: (lesson.timeslot.day_of_week, lesson.timeslot.period))) \
-        .filter(lambda tutor, lesson_count: lesson_count == periods_per_day) \
-        .penalize("Tutor should have at least one free period per day", HardSoftScore.ofSoft(700))
+#   old 
+# def tutor_free_period_constraint(constraint_factory: ConstraintFactory,user):
+#     periods_per_day=user.teaching_slots
+#     return constraint_factory.forEach(Tutor) \
+#         .join(Lesson,
+#               Joiners.equal(lambda tutor: tutor, lambda lesson: lesson.allotted_teacher)) \
+#         .groupBy(lambda tutor, lesson: tutor,
+#                  ConstraintCollectors.countDistinct(lambda tutor, lesson: (lesson.timeslot.day_of_week, lesson.timeslot.period))) \
+#         .filter(lambda tutor, lesson_count: lesson_count == periods_per_day) \
+#         .penalize("Tutor should have at least one free period per day", HardSoftScore.ofSoft(700))
 
+
+def tutor_free_period_constraint(constraint_factory: ConstraintFactory):
+    return constraint_factory.forEach(Tutor) \
+        .join(
+            Lesson, 
+            Joiners.equal(
+                lambda tutor: tutor, 
+                lambda lesson: lesson.allotted_teacher
+            )
+        ) \
+        .groupBy(
+            lambda tutor, lesson: tutor, 
+            lambda tutor, lesson: lesson.timeslot.day_of_week,
+            ConstraintCollectors.toList(lambda tutor, lesson: lesson)
+        ) \
+        .filter(lambda tutor, day_of_week, daily_lessons: 
+            len(set(l.timeslot.period for l in daily_lessons)) == daily_lessons[0].timeslot.total_teaching_slots
+        ) \
+        .penalize("Tutor should not have exactly total teaching slots per day", HardSoftScore.ofSoft(700))
 def ensure_tutor_daily_working_period(constraint_factory: ConstraintFactory):
     return constraint_factory.forEach(Tutor) \
         .join(Lesson,
