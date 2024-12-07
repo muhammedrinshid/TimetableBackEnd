@@ -311,3 +311,56 @@ class DayClassroomAssignment(models.Model):
 
     def __str__(self):
         return self.name
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+class TeacherActivityLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    date = models.DateField()
+    period = models.IntegerField()
+    activity_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("leave", "Leave"),
+            ("extra_load", "Extra Load")
+        ],
+    )
+    primary_teacher = models.ForeignKey(
+        Teacher,
+        on_delete=models.CASCADE,
+        related_name="activities",  # Teacher whose activity (leave or extra load) is being recorded.
+    )
+    substitute_teacher = models.ForeignKey(
+        Teacher,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="substitute_activities",  # Teacher taking the extra load, if applicable.
+    )
+    day_lesson = models.ForeignKey(
+        DayLesson,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="activity_logs",  # Links the log to a specific lesson.
+    )
+    remarks = models.TextField(blank=True, null=True)  # Optional field for additional comments.
+
+    class Meta:
+        unique_together = ("date", "period", "primary_teacher")  # Prevent duplicate records for the same teacher, date, and period.
+        indexes = [
+            models.Index(fields=["date", "primary_teacher", "activity_type"]),
+        ]
+
+    def __str__(self):
+        if self.activity_type == "leave":
+            return f"{self.primary_teacher.name} - Leave on {self.date} (Period {self.period})"
+        elif self.activity_type == "extra_load":
+            return f"{self.substitute_teacher.name} took extra load for {self.primary_teacher.name} on {self.date} (Period {self.period})"

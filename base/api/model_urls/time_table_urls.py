@@ -1,5 +1,5 @@
 from django.urls import path
-from ..views import time_table_views ,day_timetable_views
+from ..views import time_table_views ,day_timetable_views,download_timetable_files_views
 
 
 urlpatterns = [
@@ -27,6 +27,9 @@ urlpatterns = [
     # Default Weekly Timetable View (for teachers and students)
     # - Retrieve the entire weekly timetable of the default timetable, specific to either teachers or students
     path('default-teacher-view-week/', time_table_views.fetch_all_teachers_weekly_timetable, name='default_teachers_week_timetable'),
+
+    path('default-student-condensed-view-week/',  time_table_views.default_student_week_timetable_condensed_view,   name='default-student-condensed-timetable'),
+
     path('default-student-view-week/', time_table_views.fetch_all_students_weekly_timetable, name='default_students_week_timetable'),
 
     # Weekly Timetable for Editing (for teachers and students)
@@ -53,8 +56,13 @@ urlpatterns = [
     # Download Timetables (for teachers and classrooms)
     # - Download the weekly timetable for a specific teacher or classroom in a file format
     # - 'pk' represents the unique identifier for the teacher or classroom timetable
-    path('download-teacher-timetable/<uuid:pk>/', time_table_views.download_teacher_timetable, name='download_teacher_timetable'),
-    path('download-classroom-timetable/<uuid:pk>/', time_table_views.download_classroom_timetable, name='download_classroom_timetable'),
+    path('download-teacher-timetable/<uuid:pk>/', download_timetable_files_views.download_teacher_timetable, name='download_teacher_timetable'),
+    path('download-classroom-timetable/<uuid:pk>/', download_timetable_files_views.download_classroom_timetable, name='download_classroom_timetable'),
+    
+    
+    # path('download-teacher-timetable/<uuid:pk>/', download_timetable_files_views.download_teacher_timetable, name='download_teacher_timetable'),
+    path('download-whole-classroom-timetable/<uuid:pk>/', download_timetable_files_views.abbreviated_student_timetable_file_export, name='download_classroom_timetable'),
+    path('download-whole-classroom-timetable/', download_timetable_files_views.abbreviated_student_timetable_file_export, name='download_classroom_timetable'),
     
     
     path('send-email/', time_table_views.send_email, name='send_email_to_teacher'),
@@ -65,5 +73,5 @@ urlpatterns = [
     path('submit-custom-teacher-day-timetable/<uuid:pk>/<str:date_str>/', day_timetable_views.submit_teacher_custom_day_timetable_edits, name='submit_teacher_timetable_edits'),
     path('submit-custom-student-day-timetable/<uuid:pk>/<str:date_str>/', day_timetable_views.submit_student_custom_day_timetable_edits, name='submit_student_timetable_edits'),
 
-
+    path('teacher-replacement/', day_timetable_views.process_teacher_replacement, name='teacher_replacement'),
 ]

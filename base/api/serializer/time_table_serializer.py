@@ -2,9 +2,10 @@ from rest_framework import serializers
 from ...time_table_models import Timetable
 from rest_framework import serializers
 from ...models import  Teacher, Room, Subject, Classroom
-from ...time_table_models import Timetable,  Lesson,LessonClassSection,Tutor,ClassSection,TimeTableDaySchedule,DayTutor,DayClassSection,DayLesson,DayLessonClassSection,DayStandardLevel
-from .user_serializer import SubjectSerializer
+from ...time_table_models import Timetable,  Lesson,LessonClassSection,Tutor,ClassSection,TimeTableDaySchedule,DayTutor,DayClassSection,DayLesson,DayLessonClassSection,DayStandardLevel,TeacherActivityLog
+from .user_serializer import SubjectSerializer,GradeSerializer
 from uuid import uuid4
+from django.utils import timezone
 class TimetableSerializer(serializers.ModelSerializer):
     class Meta:
         model = Timetable
@@ -153,12 +154,22 @@ class TeacherSessionSerializerForSpecificDay(serializers.ModelSerializer):
     class_details = ClassDetailsSerializerForSpecialDay(source='class_section_assignments', many=True)
     session_key=serializers.SerializerMethodField()
     lesson_id=serializers.UUIDField(source='id')
+    lesson_level = serializers.SerializerMethodField()
     class Meta:
         model = DayLesson
-        fields = ['subject','subject_id', 'type', 'elective_subject_name', 'room', 'class_details','elective_group_id','session_key','lesson_id']
+        fields = ['subject','subject_id', 'type', 'elective_subject_name', 'room', 'class_details','elective_group_id','session_key','lesson_id','lesson_level']
 
     def get_type(self, obj):
         return 'Elective' if obj.is_elective else 'Core'
+    def get_lesson_level(self, obj):
+        first_class_section = obj.class_section_assignments.first()
+        if first_class_section:
+            grade = first_class_section.class_section.classroom.standard.grade
+
+            # Serialize the grade object
+            grade_serializer = GradeSerializer(grade)
+            return grade_serializer.data  # Return the serialized data
+        return None
 
     def to_representation(self, instance):
         if instance is None:
@@ -170,30 +181,129 @@ class TeacherSessionSerializerForSpecificDay(serializers.ModelSerializer):
 
 class InstructorSerializerForSpecificDay(serializers.ModelSerializer):
     name = serializers.CharField(source='teacher.name')
-    profile_image = serializers.SerializerMethodField()  # Use a custom method to handle the URL
+    profile_image = serializers.SerializerMethodField()
     surname = serializers.CharField(source='teacher.surname')
     teacher_id = serializers.CharField(source='teacher.teacher_id')
     id = serializers.CharField(source='teacher.id')
     qualified_subjects = SubjectSerializer(source='teacher.qualified_subjects', many=True, read_only=True)
-
+    qualified_levels = GradeSerializer(source='teacher.grades', many=True, read_only=True)
+    
+    # New fields for activity logs
+    last_week_leaves = serializers.SerializerMethodField()
+    last_month_leaves = serializers.SerializerMethodField()
+    academic_year_leaves = serializers.SerializerMethodField()
+    
+    last_week_extra_loads = serializers.SerializerMethodField()
+    last_month_extra_loads = serializers.SerializerMethodField()
+    academic_year_extra_loads = serializers.SerializerMethodField()
+    
     class Meta:
         model = DayTutor
-        fields = ['id', 'name', 'profile_image', 'surname', 'teacher_id', 'qualified_subjects']
+        fields = [
+            'id', 'name', 'profile_image', 'surname', 'teacher_id', 'qualified_levels',
+            'qualified_subjects', 'last_week_leaves', 'last_month_leaves', 
+            'academic_year_leaves', 'last_week_extra_loads', 
+            'last_month_extra_loads', 'academic_year_extra_loads',
+        ]
 
     def get_profile_image(self, obj):
-        # Check if there is a profile image and return its URL, otherwise   return None or a default URL
         profile_image = obj.teacher.profile_image
-        if profile_image:
-            return profile_image.url
-        return None  # Or you can return a default image URL if preferred
-    
+        return profile_image.url if profile_image else None
+
+    def _get_activity_count(self, obj, activity_type, start_date, end_date):
+        """
+        Helper method to count activities for a specific teacher within a date range
+        
+        :param obj: DayTutor instance
+        :param activity_type: 'leave' or 'extra_load'
+        :param start_date: Start date for filtering
+        :param end_date: End date for filtering
+        :return: Count of activities
+        """
+        return TeacherActivityLog.objects.filter(
+            primary_teacher=obj.teacher,
+            activity_type=activity_type,
+            date__range=[start_date, end_date]
+        ).count()
+
+    def _get_date_from_context(self):
+        """
+        Retrieve the reference date from the serializer context
+        
+        :return: Reference date (defaults to today if not provided)
+        """
+        return self.context.get('specific_date', timezone.now().date())
+
+    def get_last_week_leaves(self, obj):
+        """Count leaves in the last 7 days"""
+        reference_date = self._get_date_from_context()
+        start_date = reference_date - timezone.timedelta(days=7)
+        return self._get_activity_count(obj, 'leave', start_date, reference_date)
+
+    def get_last_month_leaves(self, obj):
+        """Count leaves in the last 30 days"""
+        reference_date = self._get_date_from_context()
+        start_date = reference_date - timezone.timedelta(days=30)
+        return self._get_activity_count(obj, 'leave', start_date, reference_date)
+
+    def get_academic_year_leaves(self, obj):
+        """Count leaves in the current academic year"""
+        # Fetch academic year dates from context
+        start_date = self.context.get('academic_year_start')
+        end_date = self.context.get('academic_year_end')
+        
+        # Fallback if dates not provided
+        if not start_date or not end_date:
+            # You might want to raise an exception or log a warning
+            return 0
+        
+        return self._get_activity_count(obj, 'leave', start_date, end_date)
+
+    def get_last_week_extra_loads(self, obj):
+        """Count extra loads in the last 7 days"""
+        reference_date = self._get_date_from_context()
+        start_date = reference_date - timezone.timedelta(days=7)
+        return self._get_activity_count(obj, 'extra_load', start_date, reference_date)
+
+    def get_last_month_extra_loads(self, obj):
+        """Count extra loads in the last 30 days"""
+        reference_date = self._get_date_from_context()
+        start_date = reference_date - timezone.timedelta(days=30)
+        return self._get_activity_count(obj, 'extra_load', start_date, reference_date)
+
+    def get_academic_year_extra_loads(self, obj):
+        """Count extra loads in the current academic year"""
+        # Fetch academic year dates from context
+        start_date = self.context.get('academic_year_start')
+        end_date = self.context.get('academic_year_end')
+        
+        # Fallback if dates not provided
+        if not start_date or not end_date:
+            # You might want to raise an exception or log a warning
+            return 0
+        
+        return self._get_activity_count(obj, 'extra_load', start_date, end_date)
 
 
 
 class TeacherDayTimetableSerializerForSpecificDay(serializers.Serializer):
-    instructor = InstructorSerializerForSpecificDay()
+    instructor = serializers.SerializerMethodField()
     sessions = serializers.ListField(child=TeacherSessionSerializerForSpecificDay(many=True))
+    def get_instructor(self, obj):
+        # Extract specific_date and academic_year details
+        specific_date = self.context.get('specific_date')
+        academic_year_start = self.context.get('academic_year_start')
+        academic_year_end = self.context.get('academic_year_end')
 
+        # Pass them to the nested serializer
+        return InstructorSerializerForSpecificDay(
+            obj.get('instructor'),
+            context={
+                'specific_date': specific_date,
+                'academic_year_start': academic_year_start,
+                'academic_year_end': academic_year_end
+            }
+        ).data
 
 
 

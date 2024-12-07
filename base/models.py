@@ -199,6 +199,17 @@ class UserAcademicSchedule(models.Model):
         null=True, 
         blank=True
     )
+    
+    academic_year_start = models.DateField(
+        null=True, 
+        blank=True, 
+        help_text="Start date of the academic year"
+    )
+    academic_year_end = models.DateField(
+        null=True, 
+        blank=True, 
+        help_text="End date of the academic year"
+    )
 
     def __str__(self):
         return f"Schedule for {self.user.username}"
@@ -218,6 +229,7 @@ class UserAcademicSchedule(models.Model):
         Calculate the total number of working days (schedules) in the week.
         """
         return self.day_schedules.count()
+
 
 class DaySchedule(models.Model):
     schedule = models.ForeignKey(
@@ -343,7 +355,7 @@ class Teacher(models.Model):
     profile_image = models.ImageField(upload_to='teacher_profiles/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
+    
     class Meta:
         constraints = [
             models.CheckConstraint(

@@ -12,7 +12,7 @@ from .models import (
 from .time_table_models import (
     Timetable, StandardLevel, ClassSection, 
     Course, Tutor, ClassroomAssignment, 
-    Timeslot, Lesson, LessonClassSection,DayTimetableDate, DayTimetable,DayLessonClassSection
+    Timeslot, Lesson, LessonClassSection,DayTimetableDate, DayTimetable,DayLessonClassSection,TeacherActivityLog
 )
 
 # Custom Form for User Admin
@@ -263,3 +263,21 @@ class DayLessonClassSectionAdmin(admin.ModelAdmin):
     list_filter = ('day_lesson', 'class_section')
     search_fields = ('day_lesson__id', 'class_section__id')
     ordering = ('day_lesson', 'class_section')
+    
+@admin.register(TeacherActivityLog)
+class TeacherActivityLogAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'date',
+        'period',
+        'activity_type',
+        'primary_teacher',
+        'substitute_teacher',
+        'day_lesson',
+        'remarks',
+    )
+    list_filter = ('date', 'activity_type', 'primary_teacher', 'substitute_teacher')
+    search_fields = ('primary_teacher__name', 'substitute_teacher__name', 'remarks')
+    ordering = ('date', 'period', 'primary_teacher')
+    autocomplete_fields = ('primary_teacher', 'substitute_teacher')
+    readonly_fields = ('id',)

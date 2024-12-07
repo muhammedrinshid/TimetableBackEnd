@@ -6,11 +6,11 @@ from django.utils import timezone
 from ...time_table_models import Timetable, StandardLevel, ClassSection, \
     Course, Tutor, ClassroomAssignment, Timeslot, Lesson, DayClassSection, \
     LessonClassSection, TimeTableDaySchedule, DayTimetable, DayTimetableDate, DayLesson,DayTutor \
-    ,DayCourse,DayClassroomAssignment,DayLessonClassSection,DayStandardLevel,Room
+    ,DayCourse,DayClassroomAssignment,DayLessonClassSection,DayStandardLevel,Room,TeacherActivityLog
 from ..serializer.time_table_serializer import TeacherDayTimetableSerializer, \
-    StudentDayTimetableSerializer,TimeTableDayScheduleSerializer,TeacherDayTimetableSerializerForSpecificDay,StudentDayTimetableSerializerForSpecificDay
+    StudentDayTimetableSerializer,TimeTableDayScheduleSerializer,TeacherDayTimetableSerializerForSpecificDay,StudentDayTimetableSerializerForSpecificDay,TeacherSessionSerializerForSpecificDay
 from django.db.models import Prefetch
-from ...models import Teacher
+from ...models import Teacher,Subject
 from .time_table_views import get_teacher_day_timetable as get_teacher_day_timetable_from_default,get_student_day_timetable as get_student_day_timetable_from_default
 from rest_framework.exceptions import NotFound, PermissionDenied
 
@@ -203,14 +203,34 @@ def get_whole_teacher_single_day_timetable(request, date_str):
         # Add present status for instructors
         serializer = TeacherDayTimetableSerializerForSpecificDay(
             day_timetable_for_specific_date, 
-            many=True
+            many=True,
+            context={
+                    'specific_date': specific_date,
+                    'academic_year_start': user.academic_schedule.academic_year_start,
+                    'academic_year_end': user.academic_schedule.academic_year_end,
+                }
         )
 
        
 
         for data in serializer.data:
             if "instructor" in data:
-                data["instructor"]["present"] = [True] * timetable_date.day_timetable.teaching_slots
+                # Initialize all periods as present (True)
+                present = [True] * timetable_date.day_timetable.teaching_slots
+                
+                # Fetch leave logs for the primary teacher (instructor) on the specific date
+                leave_logs = TeacherActivityLog.objects.filter(
+                    primary_teacher_id=data["instructor"]["id"],
+                    date=specific_date,
+                    activity_type="leave"
+                ).values_list("period", flat=True)
+                
+                # Mark the periods in leave_logs as False
+                for period in leave_logs:
+                    present[period - 1] = False  # Subtract 1 to match zero-based index
+                
+            data["instructor"]["present"] = present
+            
         response_data = {
             "day_timetable": serializer.data,
             "day_schedules":  {"day":day_of_week,"teaching_slots":timetable_date.day_timetable.teaching_slots},
@@ -620,7 +640,8 @@ def submit_teacher_custom_day_timetable_edits(request, pk,date_str):
         
         timetable_date = DayTimetableDate.objects.filter(  school=user,date=specific_date ).first()
         timetable = get_object_or_404(DayTimetable, id=pk, school=request.user,timetable_date=timetable_date)
-        updated_data = request.data.get("dy_timetable")
+        updated_data = request.data.get("day_timetable")
+        print(updated_data)
         if timetable_date and timetable_date.day_timetable:
             with transaction.atomic():
                     for teacher_info in updated_data:
@@ -689,6 +710,8 @@ def submit_teacher_custom_day_timetable_edits(request, pk,date_str):
             return Response({"message": "Timetable updated successfully"}, status=status.HTTP_200_OK)
             
     except Exception as e:
+        error_details = traceback.format_exc()  # Captures the full traceback
+        print("error_details", error_details)
         return Response(
             {"error": str(e)},
             status=status.HTTP_400_BAD_REQUEST
@@ -718,7 +741,6 @@ def submit_student_custom_day_timetable_edits(request, pk,date_str):
         timetable = get_object_or_404(DayTimetable, id=pk, school=request.user,timetable_date=timetable_date)
         updated_data = request.data.get("day_timetable")
         if timetable_date and timetable_date.day_timetable:
-            print(updated_data)
             with transaction.atomic():
                     for classroom_data in updated_data:
                         classroom_id = classroom_data['classroom']['id']
@@ -838,3 +860,146 @@ def get_or_create_classroom_assignment(room_data, timetable, user):
     return classroom_assignment
 
 
+
+
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def process_teacher_replacement(request):
+    """
+    Process teacher replacement with activity logging
+    """
+    # Extract data from request
+    day_timetable_id = request.data.get('day_timetable_id')
+    original_teacher_id = request.data.get('original_teacher_id')
+    replacement_teacher_id = request.data.get('replacement_teacher_id')
+    day_lesson_id = request.data.get('day_lesson_id')
+    subject_id = request.data.get('subject_id')
+    is_extra_workload_logged = request.data.get('isExtraWorkloadLogged', False)
+    is_leave_marked = request.data.get('isLeaveMarked', False)
+    replacement_date = request.data.get('date')
+    replacement_period = request.data.get('period')
+    # Validate input
+    if not all([day_timetable_id, original_teacher_id, replacement_teacher_id, 
+                day_lesson_id, subject_id, replacement_date, replacement_period]):
+        return Response({
+            'error': 'Missing required parameters'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # Retrieve objects with school context
+        day_timetable = get_object_or_404(
+            DayTimetable, 
+            id=day_timetable_id, 
+            school=request.user
+        )
+        original_teacher = get_object_or_404(
+            Teacher, 
+            id=original_teacher_id
+        )
+        replacement_teacher = get_object_or_404(
+            Teacher, 
+            id=replacement_teacher_id
+        )
+        day_lesson = get_object_or_404(
+            DayLesson, 
+            id=day_lesson_id, 
+            day_timetable=day_timetable
+        )
+        subject = get_object_or_404(
+            Subject, 
+            id=subject_id
+        )
+
+        # Handle Extra Load Logging
+            # Check for conflicting leave activity
+        conflicting_leave = TeacherActivityLog.objects.filter(
+            primary_teacher=replacement_teacher,
+            date=replacement_date,
+            period=replacement_period,
+            activity_type='leave'
+        ).first()
+
+        if conflicting_leave:
+            # Remove conflicting leave activity
+            conflicting_leave.delete()
+
+        else:
+            if is_extra_workload_logged:
+                TeacherActivityLog.objects.create(
+                    date=replacement_date,
+                    period=replacement_period,
+                    activity_type='extra_load',
+                    primary_teacher=replacement_teacher,
+                    substitute_teacher=original_teacher,
+                    day_lesson=day_lesson
+                )
+
+        # Handle Leave Marking
+            # Check for existing extra load activity
+        existing_extra_load = TeacherActivityLog.objects.filter(
+            primary_teacher=original_teacher,
+            date=replacement_date,
+            period=replacement_period,
+            activity_type='extra_load'
+        ).first()
+
+        if existing_extra_load:
+            # Remove existing extra load activity
+            existing_extra_load.delete()
+            
+        else:
+            
+            if is_leave_marked:
+
+                 # Create leave activity log
+                TeacherActivityLog.objects.create(
+                    date=replacement_date,
+                    period=replacement_period,
+                    activity_type='leave',
+                    primary_teacher=original_teacher,
+                    day_lesson=day_lesson
+                )
+
+        # Validate current lesson's teacher
+        if day_lesson.allotted_teacher.teacher != original_teacher:
+            return Response({
+                'error': 'Current lesson\'s teacher does not match the original teacher'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get or create Day Tutor for replacement teacher
+        day_tutor, _ = DayTutor.objects.get_or_create(
+            teacher=replacement_teacher,
+            school=request.user,
+            day_timetable=day_timetable
+        )
+
+        # Update lesson details
+        day_lesson.allotted_teacher = day_tutor
+        
+        # Update or create Day Course
+        day_course, _ = DayCourse.objects.get_or_create(
+            day_timetable=day_timetable,
+            school=request.user,
+            subject=subject,
+            name=subject.name
+        )
+        day_lesson.course = day_course
+        day_lesson.save()
+        day_lesson_serializer = TeacherSessionSerializerForSpecificDay(day_lesson)
+        return Response({
+            'message': 'Teacher replacement processed successfully',
+            'day_lesson': day_lesson_serializer.data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        error_message = str(e)
+        error_details = traceback.format_exc()
+        # Print the error details to the console or log file
+        print("Error occurred:", error_message)
+        print("Stack trace:", error_details)
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -29,7 +29,10 @@ class AcademicScheduleSerializer(serializers.ModelSerializer):
             'average_students_allowed',
             'period_name',
             'total_weekly_teaching_slots',
-            'day_schedules'
+            'day_schedules',
+            'academic_year_start',
+            'academic_year_end',
+            
         ]
 
     def update(self, instance, validated_data):
@@ -38,6 +41,8 @@ class AcademicScheduleSerializer(serializers.ModelSerializer):
         # Update the main schedule fields
         instance.average_students_allowed = validated_data.get('average_students_allowed', instance.average_students_allowed)
         instance.period_name = validated_data.get('period_name', instance.period_name)
+        instance.academic_year_end = validated_data.get('academic_year_end', instance.academic_year_end)
+        instance.academic_year_start = validated_data.get('academic_year_start', instance.academic_year_start)
         instance.save()
 
         # Handle day schedules
