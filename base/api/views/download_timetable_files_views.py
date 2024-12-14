@@ -40,9 +40,353 @@ from io import BytesIO
 import requests
 from ..serializer.time_table_serializer import ClassroomWeekTimetableSerializer,TeacherWeekTimetableSerializer
 import logging
-from .time_table_views import get_student_condensed_timetable
+from .time_table_views import get_student_condensed_timetable,get_teacher_condensed_timetable
 
 logger = logging.getLogger(__name__)
+
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def abbreviated_teacher_timetable_file_export(request, pk=None):
+    """
+    Export teacher's timetable as PDF or Excel file
+    
+    Query Parameters:
+    - timetable_id: ID of the timetable to export (optional)
+    - file_type: 'pdf' or 'xlsx'
+    """
+    try:
+        # Extract query parameters
+        file_type = request.query_params.get('file_type', 'xlsx').lower()
+        
+        user = request.user
+
+        # Validate inputs
+        if file_type not in ['pdf', 'xlsx']:
+            return Response({
+                'error': 'Invalid file type. Use "pdf" or "xlsx"'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Fetch timetable with proper access control
+        try:
+            if pk is None:
+                # Get the default school timetable if no specific timetable is provided
+                timetable = Timetable.objects.filter(school=user, is_default=True).first()
+            else:
+                timetable = Timetable.objects.get(school=user, id=pk)
+        except Timetable.DoesNotExist:
+            return Response({
+                'error': 'Timetable not found or access denied'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Generate condensed timetable data for the teacher
+        condensed_timetable = get_teacher_condensed_timetable( timetable)
+        
+        # Prepare weekly schedule header
+        weekly_schedule_header = [
+            {
+                "day": schedule.day,
+                "teaching_slots": schedule.teaching_slots,
+                "day_name": dict(DayChoices.choices).get(schedule.day)
+            }
+            for schedule in timetable.day_schedules.all()
+        ]
+
+        # Prepare filename with timestamp
+        timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"teacher_timetable_{user.school_name}_{timestamp}.{file_type}"
+
+        # Ensure media directory exists
+        export_dir = os.path.join(settings.MEDIA_ROOT, 'timetables')
+        os.makedirs(export_dir, exist_ok=True)
+
+        # Full file path
+        file_path = os.path.join(export_dir, filename)
+
+        # Generate file based on type
+        try:
+            if file_type == 'pdf':
+                filename = f"{user.school_name}_teacher_whole_week_timetable.pdf"
+                response = generate_whole_teacher_full_week_timetable_pdf(
+                    timetable, 
+                    request.user, 
+                    condensed_timetable, 
+                    weekly_schedule_header, 
+                    file_path
+                )
+            else:
+                filename = f"{user.school_name}_teacher_whole_week_timetable.xlsx"
+                response = generate_whole_teacher_full_week_timetable_excel(
+                    timetable, 
+                    request.user, 
+                    condensed_timetable, 
+                    weekly_schedule_header, 
+                    file_path
+                )
+
+            return response
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+    except Exception as e:
+        # Log the error for debugging
+        logger.error(f"Teacher timetable export error: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()  # Captures the full traceback
+        print("error_details", error_details)
+        return Response({
+            'error': 'An unexpected error occurred during export',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def generate_whole_teacher_full_week_timetable_pdf(timetable, user, condensed_timetable, weekly_schedule_header, file_path):
+    """
+    Generate a visually appealing PDF timetable for teachers
+    
+    :param timetable: Timetable instance
+    :param user: User downloading the timetable
+    :param condensed_timetable: Processed timetable data
+    :param weekly_schedule_header: Day schedule information
+    :param file_path: Path to save the PDF
+    :return: HttpResponse with PDF
+    """
+    
+    from io import BytesIO
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    # Create buffer for PDF
+    buffer = BytesIO()
+
+    # PDF generation with custom page setup
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), 
+                            leftMargin=0.5*inch, 
+                            rightMargin=0.5*inch, 
+                            topMargin=0.5*inch, 
+                            bottomMargin=0.5*inch)
+    
+    # Get sample styles
+    styles = getSampleStyleSheet()
+    
+    # Modify title style
+    title_style = styles['Title'].clone('CustomTitle')
+    title_style.textColor = colors.navy
+    title_style.fontSize = 16
+    title_style.alignment = 1  # Center alignment
+
+    # Story to build PDF
+    story = []
+
+    # Title (safely handle None)
+    username = user.full_name if hasattr(user, 'full_name') else user.username
+    title = Paragraph(f"Teacher Timetable - {username}", title_style)
+    story.append(title)
+    story.append(Spacer(1, 12))
+
+    # Prepare table header
+    header_row = ['Periods'] + [day['day_name'] for day in weekly_schedule_header]
+    table_data = [header_row]
+
+    # Prepare the timetable data
+    for period_index in range(max(day['teaching_slots'] for day in weekly_schedule_header)):
+        row_data = [f"Period {period_index + 1}"]
+        
+        # Process each day
+        for day_schedule in weekly_schedule_header:
+            # Check if this period exists for the day
+            if period_index < day_schedule['teaching_slots']:
+                day_sessions = condensed_timetable['timetable_rows'].get(day_schedule['day'], [])
+                
+                # Get session for this specific period
+                period_sessions = day_sessions[period_index] if period_index < len(day_sessions) else []
+                
+                # Combine session details
+                if period_sessions:
+                    session_details = [
+                        f"{session['subject']} (Room: {session['room_no']})" 
+                        for session in period_sessions
+                    ]
+                    row_data.append('\n'.join(session_details))
+                else:
+                    row_data.append('-')
+            else:
+                row_data.append('-')
+        
+        table_data.append(row_data)
+
+    # Create table with enhanced styling
+    table = Table(table_data, repeatRows=1, colWidths=[1.5*inch] + [1.5*inch]*len(weekly_schedule_header))
+    table.setStyle(TableStyle([
+        # Header row styling
+        ('BACKGROUND', (0,0), (-1,0), colors.navy),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN', (0,0), (-1,0), 'CENTER'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 12),
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        
+        # Period column styling
+        ('BACKGROUND', (0,1), (0,-1), colors.lightblue),
+        ('FONTNAME', (0,1), (0,-1), 'Helvetica-Bold'),
+        
+        # Body cells styling
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,1), (-1,-1), 10),
+        
+        # Grid styling
+        ('GRID', (0,0), (-1,-1), 1, colors.lightgrey),
+        ('BOX', (0,0), (-1,-1), 2, colors.navy),
+    ]))
+
+    story.append(table)
+
+    # Build PDF
+    doc.build(story)
+    
+    # Seek to the beginning of the buffer
+    buffer.seek(0)
+    
+    # Prepare response
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="teacher_timetable.pdf"'
+    
+    return response
+
+
+def generate_whole_teacher_full_week_timetable_excel(timetable, user, condensed_timetable, weekly_schedule_header, file_path):
+    """
+    Generate Excel timetable for teachers with improved styling
+    
+    :param timetable: Timetable instance
+    :param user: User downloading the timetable
+    :param condensed_timetable: Processed timetable data
+    :param weekly_schedule_header: Day schedule information
+    :param file_path: Path to save the Excel file
+    :return: FileResponse
+    """
+    buffer = BytesIO()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Teacher Timetable"
+
+    # Color definitions to match frontend
+    BLUE_HEADER_BG = '2563EB'  # Tailwind blue-600
+    WHITE_TEXT = 'FFFFFF'
+    BLUE_LIGHT_BG = 'DBEAFE'  # Tailwind blue-100
+    BLUE_TEXT = '1E40AF'      # Tailwind blue-800
+    PURPLE_ELECTIVE_BG = 'E9D5FF'  # Tailwind purple-200
+    PURPLE_ELECTIVE_TEXT = '7E22CE'  # Tailwind purple-900
+    BLUE_SESSION_BG = 'BFDBFE'  # Tailwind blue-200
+    BLUE_SESSION_TEXT = '1E40AF'  # Tailwind blue-900
+
+    # First row: Main header with days
+    header_row = ['Periods'] + [day['day_name'] for day in weekly_schedule_header]
+    ws.append(header_row)
+    
+    # Style first row (main header)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color=WHITE_TEXT)
+        cell.fill = PatternFill(start_color=BLUE_HEADER_BG, end_color=BLUE_HEADER_BG, fill_type='solid')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    # Prepare the timetable data
+    max_periods = max(day['teaching_slots'] for day in weekly_schedule_header)
+    
+    for period_index in range(max_periods):
+        row_data = [f"Period {period_index + 1}"]
+        
+        # Process each day
+        for day_schedule in weekly_schedule_header:
+            # Check if this period exists for the day
+            if period_index < day_schedule['teaching_slots']:
+                day_sessions = condensed_timetable['timetable_rows'].get(day_schedule['day'], [])
+                
+                # Get session for this specific period
+                period_sessions = day_sessions[period_index] if period_index < len(day_sessions) else []
+                
+                # Combine session details
+                if period_sessions:
+                    session_texts = []
+                    for session in period_sessions:
+                        session_type = 'Elective' if session.get('is_elective') else 'Mandatory'
+                        session_texts.append(f"{session['subject']} (Room: {session['room_no']}, {session_type})")
+                    row_data.append('\n'.join(session_texts))
+                else:
+                    row_data.append('')
+            else:
+                row_data.append('')
+        
+        ws.append(row_data)
+
+    # Styling for data rows
+    for row_index, row in enumerate(ws.iter_rows(min_row=2), start=2):
+        # Style period identifier column
+        row[0].font = Font(bold=True)
+        row[0].fill = PatternFill(start_color=BLUE_LIGHT_BG, end_color=BLUE_LIGHT_BG, fill_type='solid')
+
+        # Style data cells
+        for cell_index, cell in enumerate(row[1:], start=1):
+            # Determine if it's an elective or mandatory session
+            if cell.value:
+                is_elective = 'Elective' in str(cell.value)
+                
+                if is_elective:
+                    cell.fill = PatternFill(start_color=PURPLE_ELECTIVE_BG, end_color=PURPLE_ELECTIVE_BG, fill_type='solid')
+                    cell.font = Font(color=PURPLE_ELECTIVE_TEXT)
+                else:
+                    cell.fill = PatternFill(start_color=BLUE_SESSION_BG, end_color=BLUE_SESSION_BG, fill_type='solid')
+                    cell.font = Font(color=BLUE_SESSION_TEXT)
+
+            # Consistent cell styling
+            cell.alignment = Alignment(wrap_text=True, vertical='center', horizontal='center')
+            cell.border = Border(
+                left=Side(style='thin'), 
+                right=Side(style='thin'), 
+                top=Side(style='thin'), 
+                bottom=Side(style='thin')
+            )
+
+    # Auto-adjust column widths
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if cell.value and len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = (max_length + 3)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # Save the workbook
+    wb.save(buffer) 
+    buffer.seek(0)
+    from django.http import FileResponse
+
+    return FileResponse(
+        buffer, 
+        as_attachment=True, 
+        filename=f"{user.username}_teacher_timetable.xlsx",
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
+
+
+
+
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -57,6 +401,7 @@ def abbreviated_student_timetable_file_export(request,pk=None):
     try:
         # Extract query parameters
         file_type = request.query_params.get('file_type', 'xlsx').lower()
+        print(file_type)
         
         user = request.user
 
@@ -102,64 +447,90 @@ def abbreviated_student_timetable_file_export(request,pk=None):
         file_path = os.path.join(export_dir, filename)
 
         # Generate file based on type
-        if file_type == 'pdf':
-            _generate_timetable_pdf(
+        try:
+            if file_type == 'pdf':
+                filename = f"{user.school_name}student_whole_week_timetable.pdf"
+                response =    generate_whole_student_full_week_timetable_pdf(
                 timetable, 
                 request.user, 
                 condensed_timetable, 
                 weekly_schedule_header, 
                 file_path
             )
-            content_type = 'application/pdf'
-        else:  # excel
-            _generate_timetable_excel(
+            else:
+                filename = f"{user.school_name}student_whole_week_timetable.xlsx"
+                response = generate_whole_student_full_week_timetable_excel(
                 timetable, 
                 request.user, 
                 condensed_timetable, 
                 weekly_schedule_header, 
                 file_path
             )
-            content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-        # Return file details for frontend to handle download
-        return Response({
-            'filename': filename,
-            'file_path': file_path,
-            'content_type': content_type,
-            'message': f'Timetable exported as {file_type.upper()} successfully'
-        }, status=status.HTTP_200_OK)
+            return response
+        except Exception as e:
+          return Response({'error': str(e)}, status=500)
 
     except Exception as e:
         # Log the error for debugging
         logger.error(f"Timetable export error: {str(e)}")
+        
         return Response({
             'error': 'An unexpected error occurred during export',
             'details': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-def _generate_timetable_pdf(timetable, user, condensed_timetable, weekly_schedule_header, file_path):
+
+def generate_whole_student_full_week_timetable_pdf(timetable, user, condensed_timetable, weekly_schedule_header, file_path):
     """
-    Generate PDF timetable
+    Generate a visually appealing PDF timetable
     
     :param timetable: Timetable instance
     :param user: User downloading the timetable
     :param condensed_timetable: Processed timetable data
     :param weekly_schedule_header: Day schedule information
     :param file_path: Path to save the PDF
-    :return: None
+    :return: HttpResponse with PDF
     """
-    # PDF generation logic remains the same as in previous example
-    doc = SimpleDocTemplate(file_path, pagesize=landscape(letter))
+    
+    from io import BytesIO
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    # Create buffer for PDF
+    buffer = BytesIO()
+
+    # PDF generation with custom page setup
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), 
+                            leftMargin=0.5*inch, 
+                            rightMargin=0.5*inch, 
+                            topMargin=0.5*inch, 
+                            bottomMargin=0.5*inch)
+    
+    # Get sample styles
     styles = getSampleStyleSheet()
+    
+    # Modify title style
+    title_style = styles['Title'].clone('CustomTitle')
+    title_style.textColor = colors.navy
+    title_style.fontSize = 16
+    title_style.alignment = 1  # Center alignment
+
+    # Story to build PDF
     story = []
 
-    # Title
-    title = Paragraph(f"Student Timetable - {user.username}", styles['Title'])
+    # Title (safely handle None)
+    username = getattr(user, 'username', 'Student')
+    title = Paragraph(f"Student Timetable - {username}", title_style)
     story.append(title)
     story.append(Spacer(1, 12))
 
     # Prepare table header
-    header_row = ['Classroom'] + [day['day_name'] for day in weekly_schedule_header]
+    header_row = ['Classrooms'] + [day['day_name'] for day in weekly_schedule_header]
     table_data = [header_row]
 
     # Process each classroom's timetable
@@ -174,8 +545,7 @@ def _generate_timetable_pdf(timetable, user, condensed_timetable, weekly_schedul
             day_subjects = []
             for period_sessions in day_sessions:
                 period_subjects = [
-                    f"{session['subject']} ({'Elective' if session.get('is_elective') else 'Mandatory'})" 
-                    for session in period_sessions
+                    session['subject'] for session in period_sessions
                 ]
                 day_subjects.append(', '.join(period_subjects) if period_subjects else '-')
             
@@ -183,89 +553,140 @@ def _generate_timetable_pdf(timetable, user, condensed_timetable, weekly_schedul
         
         table_data.append(row_data)
 
-    # Create table with styling
-    table = Table(table_data, repeatRows=1)
+    # Create table with enhanced styling
+    table = Table(table_data, repeatRows=1, colWidths=[1.5*inch] + [1.5*inch]*len(weekly_schedule_header))
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        # Header row styling
+        ('BACKGROUND', (0,0), (-1,0), colors.navy),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN', (0,0), (-1,0), 'CENTER'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTSIZE', (0,0), (-1,0), 12),
-        ('BOTTOMPADDING', (0,0), (-1,0), 12),
-        ('BACKGROUND', (0,1), (0,-1), colors.beige),
-        ('GRID', (0,0), (-1,-1), 1, colors.black)
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        
+        # Classroom column styling
+        ('BACKGROUND', (0,1), (0,-1), colors.lightblue),
+        ('FONTNAME', (0,1), (0,-1), 'Helvetica-Bold'),
+        
+        # Body cells styling
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,1), (-1,-1), 10),
+        
+        # Grid styling
+        ('GRID', (0,0), (-1,-1), 1, colors.lightgrey),
+        ('BOX', (0,0), (-1,-1), 2, colors.navy),
     ]))
 
     story.append(table)
 
     # Build PDF
     doc.build(story)
+    
+    # Seek to the beginning of the buffer
+    buffer.seek(0)
+    
+    # Prepare response
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="student_timetable.pdf"'
+    
+    return response
 
-def _generate_timetable_excel(timetable, user, condensed_timetable, weekly_schedule_header, file_path):
+
+  
+def generate_whole_student_full_week_timetable_excel(timetable, user, condensed_timetable, weekly_schedule_header, file_path):
     """
-    Generate Excel timetable
+    Generate Excel timetable with improved styling to match frontend design
     
     :param timetable: Timetable instance
     :param user: User downloading the timetable
     :param condensed_timetable: Processed timetable data
     :param weekly_schedule_header: Day schedule information
     :param file_path: Path to save the Excel file
-    :return: None
+    :return: FileResponse
     """
-    # Excel generation logic remains the same as in previous example
+    buffer = BytesIO()
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Student Timetable"
 
-    # Prepare header
-    header = ['Classroom'] + [day['day_name'] for day in weekly_schedule_header]
-    ws.append(header)
+    # Color definitions to match frontend
+    BLUE_HEADER_BG = '2563EB'  # Tailwind blue-600
+    WHITE_TEXT = 'FFFFFF'
+    BLUE_LIGHT_BG = 'DBEAFE'  # Tailwind blue-100
+    BLUE_TEXT = '1E40AF'      # Tailwind blue-800
+    PURPLE_ELECTIVE_BG = 'E9D5FF'  # Tailwind purple-200
+    PURPLE_ELECTIVE_TEXT = '7E22CE'  # Tailwind purple-900
+    BLUE_SESSION_BG = 'BFDBFE'  # Tailwind blue-200
+    BLUE_SESSION_TEXT = '1E40AF'  # Tailwind blue-900
 
-    # Style header
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="808080", end_color="808080", fill_type="solid")
+    # First row: Main header with classrooms and days
+    header_row = ['Classrooms'] + [day['day_name'] for day in weekly_schedule_header]
+    ws.append(header_row)
     
+    # Style first row (main header)
     for cell in ws[1]:
-        cell.font = header_font
-        cell.fill = header_fill
-    
+        cell.font = Font(bold=True, color=WHITE_TEXT)
+        cell.fill = PatternFill(start_color=BLUE_HEADER_BG, end_color=BLUE_HEADER_BG, fill_type='solid')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    # Second row: Period numbers
+    period_row = ['']  # Empty cell for classroom column
+    for day_schedule in weekly_schedule_header:
+        period_row.extend([str(i+1) for i in range(day_schedule['teaching_slots'])])
+    ws.append(period_row)
+
+    # Style second row (period numbers)
+    for cell in ws[2]:
+        cell.font = Font(color=BLUE_TEXT)
+        cell.fill = PatternFill(start_color=BLUE_LIGHT_BG, end_color=BLUE_LIGHT_BG, fill_type='solid')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
     # Process each classroom's timetable
     for classroom_data in condensed_timetable:
         row_data = [classroom_data['class_details']['full_identifier']]
         
-        # Process each day
         for day_schedule in weekly_schedule_header:
             day_sessions = classroom_data['timetable_rows'].get(day_schedule['day'], [])
             
-            # Combine all sessions for the day
-            day_subjects = []
-            for period_sessions in day_sessions:
-                period_subjects = [
-                    f"{session['subject']} ({'Elective' if session.get('is_elective') else 'Mandatory'})" 
-                    for session in period_sessions
-                ]
-                day_subjects.append(', '.join(period_subjects) if period_subjects else '-')
+            # Ensure we have enough slots filled
+            while len(day_sessions) < day_schedule['teaching_slots']:
+                day_sessions.append([])
             
-            row_data.append('\n'.join(day_subjects))
+            for period_sessions in day_sessions:
+                if not period_sessions:
+                    row_data.append('')
+                else:
+                    # Combine sessions for the period
+                    session_texts = []
+                    for session in period_sessions:
+                        session_type = 'Elective' if session.get('is_elective') else 'Mandatory'
+                        session_texts.append(f"{session['subject']} ({session_type})")
+                    row_data.append('\n'.join(session_texts))
         
         ws.append(row_data)
 
-    # Auto-adjust column widths
-    for column in ws.columns:
-        max_length = 0
-        column_letter = column[0].column_letter
-        for cell in column:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(cell.value)
-            except:
-                pass
-        adjusted_width = (max_length + 2)
-        ws.column_dimensions[column_letter].width = adjusted_width
+    # Styling for data rows
+    for row_index, row in enumerate(ws.iter_rows(min_row=3), start=3):
+        # Style classroom identifier column
+        row[0].font = Font(bold=True)
+        row[0].fill = PatternFill(start_color=BLUE_LIGHT_BG, end_color=BLUE_LIGHT_BG, fill_type='solid')
 
-    # Add some styling
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        for cell in row:
+        # Style data cells
+        for cell_index, cell in enumerate(row[1:], start=1):
+            # Determine if it's an elective or mandatory session
+            if cell.value:
+                is_elective = 'Elective' in str(cell.value)
+                
+                if is_elective:
+                    cell.fill = PatternFill(start_color=PURPLE_ELECTIVE_BG, end_color=PURPLE_ELECTIVE_BG, fill_type='solid')
+                    cell.font = Font(color=PURPLE_ELECTIVE_TEXT)
+                else:
+                    cell.fill = PatternFill(start_color=BLUE_SESSION_BG, end_color=BLUE_SESSION_BG, fill_type='solid')
+                    cell.font = Font(color=BLUE_SESSION_TEXT)
+
+            # Consistent cell styling
             cell.alignment = Alignment(wrap_text=True, vertical='center', horizontal='center')
             cell.border = Border(
                 left=Side(style='thin'), 
@@ -274,13 +695,30 @@ def _generate_timetable_excel(timetable, user, condensed_timetable, weekly_sched
                 bottom=Side(style='thin')
             )
 
+    # Auto-adjust column widths
+    for column in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        for cell in column:
+            try:
+                if cell.value and len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = (max_length + 3)
+        ws.column_dimensions[column_letter].width = adjusted_width
+
     # Save the workbook
-    wb.save(file_path)
+    wb.save(buffer) 
+    buffer.seek(0)
+    from django.http import FileResponse
 
-# URL configuration in urls.py
-
-
-
+    return FileResponse(
+        buffer, 
+        as_attachment=True, 
+        filename=f"{user.username}_timetable.xlsx",
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 
 
 

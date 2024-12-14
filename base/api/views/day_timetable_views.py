@@ -6,7 +6,7 @@ from django.utils import timezone
 from ...time_table_models import Timetable, StandardLevel, ClassSection, \
     Course, Tutor, ClassroomAssignment, Timeslot, Lesson, DayClassSection, \
     LessonClassSection, TimeTableDaySchedule, DayTimetable, DayTimetableDate, DayLesson,DayTutor \
-    ,DayCourse,DayClassroomAssignment,DayLessonClassSection,DayStandardLevel,Room,TeacherActivityLog
+    ,DayCourse,DayClassroomAssignment,DayLessonClassSection,DayStandardLevel,Room,TeacherActivityLog,DayTimeTablePeriod
 from ..serializer.time_table_serializer import TeacherDayTimetableSerializer, \
     StudentDayTimetableSerializer,TimeTableDayScheduleSerializer,TeacherDayTimetableSerializerForSpecificDay,StudentDayTimetableSerializerForSpecificDay,TeacherSessionSerializerForSpecificDay
 from django.db.models import Prefetch
@@ -488,6 +488,29 @@ def create_day_timetable(request):
             teaching_slots=max_teaching_slots,
             auto_generated=False
         )
+        # Fetch the source day schedule using TimetableSchedule
+        source_day_schedule = TimeTableDaySchedule.objects.filter(
+            table=active_timetable,
+            day=day_of_week  # Replace `some_day` with the appropriate logic
+        ).first()
+
+        if source_day_schedule:
+            day_timetable = DayTimetable.objects.create(
+                timetable=active_timetable,
+                school=request.user,
+                teaching_slots=source_day_schedule.teaching_slots,
+                auto_generated=False
+            )
+            
+            # Iterate through periods and create DayTimeTablePeriod entries
+            for period in source_day_schedule.periods.all():
+                DayTimeTablePeriod.objects.create(
+                    day_timetable=day_timetable,
+                    period_number=period.period_number,
+                    start_time=period.start_time,
+                    end_time=period.end_time
+                )
+
 
         # Create DayTimetableDate
         day_timetable_date = DayTimetableDate.objects.create(

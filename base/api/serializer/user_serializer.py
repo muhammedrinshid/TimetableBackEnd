@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from ...models import User,Grade,Subject,UserConstraintSettings,DaySchedule,UserAcademicSchedule
+from ...models import User,Grade,Subject,UserConstraintSettings,DaySchedule,UserAcademicSchedule,Period
 
 
 
@@ -8,7 +8,11 @@ class GradeSerializer(serializers.ModelSerializer):
         model = Grade
         fields = ['name', 'short_name','id']
         
-        
+class PeriodSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Period
+        fields = ['period_number', 'start_time', 'end_time']
+
         
 class SubjectSerializer(serializers.ModelSerializer):
     class Meta:
@@ -16,13 +20,15 @@ class SubjectSerializer(serializers.ModelSerializer):
         fields = ['name', 'id']
         
 class DayScheduleSerializer(serializers.ModelSerializer):
+    periods = PeriodSerializer(many=True, required=False)
+
     class Meta:
         model = DaySchedule
-        fields = ['day', 'teaching_slots']
+        fields = ['day', 'teaching_slots', 'periods']
 
 class AcademicScheduleSerializer(serializers.ModelSerializer):
     day_schedules = DayScheduleSerializer(many=True)
-    
+
     class Meta:
         model = UserAcademicSchedule
         fields = [
@@ -32,32 +38,62 @@ class AcademicScheduleSerializer(serializers.ModelSerializer):
             'day_schedules',
             'academic_year_start',
             'academic_year_end',
-            
+            'is_auto_timetable_creation',
         ]
 
     def update(self, instance, validated_data):
         day_schedules_data = validated_data.pop('day_schedules', [])
-        
+
         # Update the main schedule fields
         instance.average_students_allowed = validated_data.get('average_students_allowed', instance.average_students_allowed)
         instance.period_name = validated_data.get('period_name', instance.period_name)
         instance.academic_year_end = validated_data.get('academic_year_end', instance.academic_year_end)
         instance.academic_year_start = validated_data.get('academic_year_start', instance.academic_year_start)
+        instance.is_auto_timetable_creation = validated_data.get('is_auto_timetable_creation', instance.is_auto_timetable_creation)
         instance.save()
 
         # Handle day schedules
         instance.day_schedules.all().delete()  # Remove existing schedules
         for day_schedule_data in day_schedules_data:
-            filtered_data = {
-                'day': day_schedule_data.get('day'),
-                'teaching_slots': day_schedule_data.get('teaching_slots')
-            }
-            DaySchedule.objects.create(
-                schedule=instance,  # Set the foreign key relationship
-                **filtered_data  # Only pass the filtered fields
+            periods_data = day_schedule_data.pop('periods', [])
+            day_schedule = DaySchedule.objects.create(
+                schedule=instance,
+                day=day_schedule_data['day'],
+                teaching_slots=day_schedule_data['teaching_slots']
             )
 
+            # Create periods for the day schedule
+            for period_data in periods_data:
+                Period.objects.create(
+                    day_schedule=day_schedule,
+                    period_number=period_data['period_number'],
+                    start_time=period_data.get('start_time', None),
+                    end_time=period_data.get('end_time', None),
+                )
+
         return instance
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        for day_schedule in representation['day_schedules']:
+            teaching_slots = day_schedule['teaching_slots']
+            periods = day_schedule.get('periods', [])
+
+            # Add empty periods if they are missing
+            if len(periods) < teaching_slots:
+                existing_period_numbers = {p['period_number'] for p in periods}
+                for period_number in range(1, teaching_slots + 1):
+                    if period_number not in existing_period_numbers:
+                        periods.append({
+                            'period_number': period_number,
+                            'start_time': None,
+                            'end_time': None,
+                        })
+
+                # Sort periods by period_number
+                day_schedule['periods'] = sorted(periods, key=lambda p: p['period_number'])
+
+        return representation
 
 class UserSerializer(serializers.ModelSerializer):
     profile_image = serializers.ImageField(read_only=True)
@@ -73,7 +109,7 @@ class UserSerializer(serializers.ModelSerializer):
             'average_students_allowed_in_a_class', 'period_name',
             'all_classes_subject_assigned_atleast_one_teacher',
             'all_classes_assigned_subjects', 
-            'grades'
+            'grades',
         ]
         read_only_fields = ['id', 'school_id', 'email', 'profile_image']
 

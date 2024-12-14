@@ -181,6 +181,56 @@ class DayChoices(models.TextChoices):
     SATURDAY = 'SAT', 'Saturday'
     SUNDAY = 'SUN', 'Sunday'
 
+
+class Notification(models.Model):
+    NOTIFICATION_TYPES = [
+        ('INFO', 'Information'),
+        ('ALERT', 'Alert'),
+        ('REMINDER', 'Reminder'),
+        ('DAYTIMETABLE_CREATION_ERROR', 'Day Timetable Creation Error'),
+        ('CREATE_DAYTIMETABLE', 'Create Day Timetable'),
+        ('UPDATE_DAYTIMETABLE', 'Update Day Timetable'),
+        ('CHANGE_AND_CREATE', 'Change and Create'),
+    ]
+
+    
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    notification_type = models.CharField(
+        max_length=30,
+        choices=NOTIFICATION_TYPES,
+        default='INFO'
+    )
+    recipients = models.ManyToManyField(User, blank=True, related_name='notifications')
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    send_to_all = models.BooleanField(default=False)
+    expiry_date = models.DateTimeField(null=True, blank=True)
+    # read_by = models.ManyToManyField(User, related_name='read_notifications', blank=True)
+    priority = models.CharField(
+        max_length=10,
+        choices=[('HIGH', 'High'), ('MEDIUM', 'Medium'), ('LOW', 'Low')],
+        default='MEDIUM'
+    )
+    # status = models.CharField(
+    #     max_length=10,
+    #     choices=[('ACTIVE', 'Active'), ('ARCHIVED', 'Archived'), ('DISMISSED', 'Dismissed')],
+    #     default='ACTIVE'
+    # )
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_notifications')
+
+    def __str__(self):
+        return self.title
+
+    def send_to_all_users(self):
+        if self.send_to_all:
+            self.recipients.add(*User.objects.all())
+
+
+
+
+
+
 class UserAcademicSchedule(models.Model):
   
     user = models.OneToOneField(
@@ -210,7 +260,10 @@ class UserAcademicSchedule(models.Model):
         blank=True, 
         help_text="End date of the academic year"
     )
-
+    is_auto_timetable_creation = models.BooleanField(
+        default=True, 
+        help_text="Indicates if the timetable is automatically created or manually managed."
+    )
     def __str__(self):
         return f"Schedule for {self.user.username}"
 
@@ -249,7 +302,30 @@ class DaySchedule(models.Model):
 
     def __str__(self):
         return f"{self.get_day_display()} - {self.teaching_slots} slots"    
-    
+
+class Period(models.Model):
+    day_schedule = models.ForeignKey(
+        DaySchedule, 
+        on_delete=models.CASCADE, 
+        related_name='periods'
+    )
+    period_number = models.PositiveIntegerField()  # New field to represent the period number
+    start_time = models.TimeField(null=True, blank=True)  # Allow null values
+    end_time = models.TimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ['day_schedule', 'period_number']  # Ensure unique period numbers within a schedule
+        ordering = ['period_number']
+
+    def __str__(self):
+        return f"Period {self.period_number}: {self.start_time} - {self.end_time}"
+    def clean(self):
+        super().clean()
+        if self.period_number > self.day_schedule.teaching_slots:
+            raise ValidationError(
+                f"Period number {self.period_number} exceeds the allowed teaching slots ({self.day_schedule.teaching_slots}) for this day."
+            )
+
 class UserConstraintSettings(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='constraint_settings')
 

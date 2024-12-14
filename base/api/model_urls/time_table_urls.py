@@ -63,6 +63,8 @@ urlpatterns = [
     # path('download-teacher-timetable/<uuid:pk>/', download_timetable_files_views.download_teacher_timetable, name='download_teacher_timetable'),
     path('download-whole-classroom-timetable/<uuid:pk>/', download_timetable_files_views.abbreviated_student_timetable_file_export, name='download_classroom_timetable'),
     path('download-whole-classroom-timetable/', download_timetable_files_views.abbreviated_student_timetable_file_export, name='download_classroom_timetable'),
+    path('download-whole-teacher-timetable/<uuid:pk>/', download_timetable_files_views.abbreviated_teacher_timetable_file_export, name='download_classroom_timetable'),
+    path('download-whole-teacher-timetable/', download_timetable_files_views.abbreviated_teacher_timetable_file_export, name='download_classroom_timetable'),
     
     
     path('send-email/', time_table_views.send_email, name='send_email_to_teacher'),

@@ -30,7 +30,7 @@ from django.db import transaction
 import pandas as pd
 from fuzzywuzzy import fuzz  # For fuzzy string matching of subject names
 
-from ..serializer.class_room_serializer import TeacherSerializer as SimpleTeacherSerializer
+from ..serializer.class_room_serializer import  SimpleTeacherSerializer
 
 @api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])

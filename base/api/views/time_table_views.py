@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from ...optapy_solver.solver import run_optimization
-from ...time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection,TimeTableDaySchedule,DayChoices
+from ...time_table_models import Timetable, StandardLevel, ClassSection, Course, Tutor, ClassroomAssignment, Timeslot, Lesson,LessonClassSection,TimeTableDaySchedule,DayChoices,TimeTablePeriod
 from django.db import transaction
 
 from django.db.models import Prefetch
@@ -70,11 +70,18 @@ def save_optimization_results(user, solution,score,hard_score,soft_score):
             )
             academic_schedule=user.academic_schedule
             for day_schedule in academic_schedule.day_schedules.all():
-                TimeTableDaySchedule.objects.create(
+                timetable_day_schedule = TimeTableDaySchedule.objects.create(
                     table=timetable,
                     day=day_schedule.day,
                     teaching_slots=day_schedule.teaching_slots
                 )
+                for period in day_schedule.periods.all():  # Iterate through the periods of the day schedule
+                    TimeTablePeriod.objects.create(
+                        day_schedule=timetable_day_schedule,
+                        period_number=period.period_number,
+                        start_time=period.start_time,
+                        end_time=period.end_time
+        )
              
             for lesson in solution.get_lesson_list():
                 # Process Course
@@ -1107,7 +1114,7 @@ def abbreviate(word):
 
     
     
-def get_student_condensed_timetable(user, timetable):
+def get_student_condensed_timetable( timetable):
     """
     Generate a condensed timetable view with simplified class and day representations.
     
@@ -1193,6 +1200,53 @@ def get_student_condensed_timetable(user, timetable):
     
     return condensed_timetables
 
+def get_teacher_condensed_timetable(timetable):
+    teachers = Teacher.objects.filter(school=timetable.school)
+    condensed_timetable = []
+    
+    for teacher in teachers:
+        tutor = Tutor.objects.filter(teacher=teacher, timetable=timetable).first()
+        
+        if tutor:
+            teacher_entry = {
+                "teacher_details": {
+                "full_name": f"{tutor.teacher.name} {tutor.teacher.surname}",
+                    "teacher_id": tutor.teacher.teacher_id
+                },
+                "timetable_rows": {}
+            }
+            
+            # Get all day schedules for this timetable
+            day_schedules = timetable.day_schedules.all()
+            
+            for day_schedule in day_schedules:
+                # Find lessons for this teacher on this specific day
+                lessons = Lesson.objects.filter(
+                    timetable=timetable,
+                    allotted_teacher=tutor,
+                    timeslot__day_of_week=day_schedule.day
+                ).order_by('timeslot__period')
+                
+                # Organize lessons by period
+                day_sessions = [[] for _ in range(day_schedule.teaching_slots)]
+                
+                for lesson in lessons:
+                    period_index = lesson.timeslot.period - 1
+                    lesson_info = {
+                        "subject": abbreviate(lesson.course.subject.name),
+                        "is_elective": lesson.is_elective,
+                        "room_no": lesson.classroom_assignment.room.room_number if lesson.classroom_assignment else None
+                    }
+                    day_sessions[period_index].append(lesson_info)
+                
+                # Only add days with sessions
+                teacher_entry["timetable_rows"][day_schedule.day] = day_sessions
+            
+            # Only add teachers with at least one lesson
+            if teacher_entry["timetable_rows"]:
+                condensed_timetable.append(teacher_entry)
+    
+    return  condensed_timetable
 
 
 
@@ -1218,18 +1272,44 @@ def default_student_week_timetable_condensed_view(request):
             }, status=status.HTTP_404_NOT_FOUND)
 
         # Generate condensed timetable
-        condensed_timetable = get_student_condensed_timetable(request.user, timetable)
+        condensed_student_timetable = get_student_condensed_timetable( timetable)
+        condensed_teacher_timetable = get_teacher_condensed_timetable( timetable)
+        
+        week_period_timing = {}
+
+        # Iterate through each schedule to gather periods
+        for schedule in timetable.day_schedules.all():
+            periods = []  # Initialize the periods list
+            
+            # For each period in the day's schedule, gather the start and end times
+            for period_number in range(1, schedule.teaching_slots + 1):
+                period = schedule.periods.filter(period_number=period_number).first()
+                
+                periods.append({
+                    'period': period_number,
+                    'start_time': period.start_time if period else None,
+                    'end_time': period.end_time if period else None
+                })
+            
+            # Store the periods for the day in the week_period_timing dictionary
+            week_period_timing[schedule.day] = periods
+
+        # Now, create the weekly_schedule_header using the populated week_period_timing
         weekly_schedule_header = [
             {
                 "day": schedule.day,
                 "teaching_slots": schedule.teaching_slots,
-                "day_name": dict(DayChoices.choices).get(schedule.day)
+                "day_name": dict(DayChoices.choices).get(schedule.day),  # Ensure this maps correctly
+                "periods": week_period_timing.get(schedule.day, [])  # Safe access with default empty list if not found
             }
             for schedule in timetable.day_schedules.all()
         ]
 
+        # Now weekly_schedule_header should contain the desired data with periods
+
+
         return Response({
-            'timetable': {"weekly_schedule_header":weekly_schedule_header,"condensed_timetable":condensed_timetable},
+            'timetable': {"weekly_schedule_header":weekly_schedule_header,"condensed_teacher_timetable":condensed_teacher_timetable,"condensed_student_timetable":condensed_student_timetable},
             'message': 'Timetable retrieved successfully'
         }, status=status.HTTP_200_OK)
 
@@ -1238,3 +1318,6 @@ def default_student_week_timetable_condensed_view(request):
             'error': str(e),
             'message': 'An unexpected error occurred while fetching timetable'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        
+        

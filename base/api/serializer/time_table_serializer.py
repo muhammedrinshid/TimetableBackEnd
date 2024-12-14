@@ -599,13 +599,22 @@ class TeacherWeekTimetableSerializer(serializers.Serializer):
     sessions = TeacherSessionSerializer(many=True)
 
     
-
 class TimeTableDayScheduleSerializer(serializers.ModelSerializer):
+    periods = serializers.SerializerMethodField()
+
     class Meta:
         model = TimeTableDaySchedule
-        fields = ['day', 'teaching_slots']
+        fields = ['day', 'teaching_slots', 'periods']
 
-
-
-
-
+    def get_periods(self, obj):
+        # Create a list of all possible period numbers
+        periods = []
+        for period_number in range(1, obj.teaching_slots + 1):
+            # Get the period object for the current period number, if it exists
+            period = obj.periods.filter(period_number=period_number).first()
+            periods.append({
+                'period': period_number,
+                'start_time': period.start_time if period else None,
+                'end_time': period.end_time if period else None
+            })
+        return periods

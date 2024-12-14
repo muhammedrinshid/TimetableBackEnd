@@ -4,6 +4,7 @@ from django.db import models
 from .models import User
 from django.dispatch import receiver
 from django.db.models.signals import post_save
+from django.core.exceptions import ValidationError
 
 from .models import Classroom,Subject,Teacher,Room,Standard
 class DayChoices(models.TextChoices):
@@ -65,6 +66,30 @@ class TimeTableDaySchedule(models.Model):
     def __str__(self):
         return f"{self.get_day_display()} - {self.teaching_slots} slots"    
     
+    
+    
+class TimeTablePeriod(models.Model):
+    day_schedule = models.ForeignKey(
+        TimeTableDaySchedule, 
+        on_delete=models.CASCADE, 
+        related_name='periods'
+    )
+    period_number = models.PositiveIntegerField()  # New field to represent the period number
+    start_time = models.TimeField(null=True, blank=True)  # Allow null values
+    end_time = models.TimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ['day_schedule', 'period_number']  # Ensure unique period numbers within a schedule
+        ordering = ['period_number']
+
+    def __str__(self):
+        return f"Period {self.period_number}: {self.start_time} - {self.end_time}"
+    def clean(self):
+        super().clean()
+        if self.period_number > self.day_schedule.teaching_slots:
+            raise ValidationError(
+                f"Period number {self.period_number} exceeds the allowed teaching slots ({self.day_schedule.teaching_slots}) for this day."
+            )
     
 class StandardLevel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -201,6 +226,29 @@ class DayTimetable(models.Model):
     def __str__(self):
         return f"DayTimetable for {self.school} from {self.timetable}"
     
+
+class DayTimeTablePeriod(models.Model):
+    day_timetable = models.ForeignKey(
+        DayTimetable, 
+        on_delete=models.CASCADE, 
+        related_name='periods'
+    )
+    period_number = models.PositiveIntegerField()  # New field to represent the period number
+    start_time = models.TimeField(null=True, blank=True)  # Allow null values
+    end_time = models.TimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ['day_timetable', 'period_number']  # Ensure unique period numbers within a schedule
+        ordering = ['period_number']
+
+    def __str__(self):
+        return f"Period {self.period_number}: {self.start_time} - {self.end_time}"
+    def clean(self):
+        super().clean()
+        if self.period_number > self.day_timetable.teaching_slots:
+            raise ValidationError(
+                f"Period number {self.period_number} exceeds the allowed teaching slots ({self.day_timetable.teaching_slots}) for this day."
+            )
     
 class DayLesson(models.Model):  
     
