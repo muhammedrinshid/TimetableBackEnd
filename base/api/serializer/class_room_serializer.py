@@ -9,7 +9,7 @@ class TeacherDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Teacher
-        fields = ['id', 'name', 'image','teachr_id']
+        fields = ['id', 'name', 'image','teacher_id']
 
     def get_name(self, obj):
         return f"{obj.name} {obj.surname}" if obj.surname else obj.name

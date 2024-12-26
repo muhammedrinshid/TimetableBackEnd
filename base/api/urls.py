@@ -17,5 +17,6 @@ urlpatterns = [
     path('room/',include("base.api.model_urls.room_urls")),
     path('time-table/',include("base.api.model_urls.time_table_urls")),
     path('analytics/',include("base.api.model_urls.analytics_urls")),
-    path('activity/',include("base.api.model_urls.teacher_activity_urls"))
+    path('activity/',include("base.api.model_urls.teacher_activity_urls")),
+    path('elective-group/',include("base.api.model_urls.elective_group_urls"))
 ]
